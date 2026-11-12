@@ -1,0 +1,2 @@
+playwright>=1.44
+pypdf>=4.0

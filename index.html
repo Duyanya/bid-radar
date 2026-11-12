@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>运营商投标雷达</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b22; --panel2:#1c2230; --line:#26303d;
+    --txt:#e6edf3; --dim:#8b98a5; --acc:#3b82f6; --acc2:#06b6d4;
+    --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:22px 26px 60px}
+  .head{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+  .logo{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;font-size:19px}
+  h1{font-size:19px;font-weight:650;letter-spacing:.3px}
+  .sub{color:var(--dim);font-size:12px;margin-top:2px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);
+    background:var(--panel);padding:7px 13px;border-radius:20px;border:1px solid var(--line)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:p 2s infinite}
+  @keyframes p{50%{opacity:.35}}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 16px;position:relative;overflow:hidden}
+  .card::after{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--acc)}
+  .card.g::after{background:var(--ok)} .card.w::after{background:var(--warn)} .card.c::after{background:var(--acc2)}
+  .card .k{color:var(--dim);font-size:11.5px;letter-spacing:.4px}
+  .card .v{font-size:25px;font-weight:680;margin-top:5px;font-variant-numeric:tabular-nums}
+
+  .bar{display:flex;gap:9px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+  input[type=text],select{background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    padding:8px 12px;border-radius:8px;font-size:13px;outline:0;font-family:inherit}
+  input[type=text]{min-width:230px}
+  input[type=text]:focus,select:focus{border-color:var(--acc)}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:8px 15px;
+    border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;transition:.15s}
+  .btn:hover{border-color:var(--acc);color:#fff}
+  .btn.pri{background:linear-gradient(135deg,var(--acc),#2563eb);border:0;font-weight:600}
+  .btn.pri:hover{filter:brightness(1.12)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .spacer{flex:1}
+
+  .wrap{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{background:var(--panel2);text-align:left;padding:11px 13px;font-weight:600;
+    font-size:12px;color:var(--dim);letter-spacing:.4px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;z-index:2}
+  tbody td{padding:11px 13px;border-bottom:1px solid #1e2530;vertical-align:top}
+  tbody tr:hover{background:#1a2130}
+  tbody tr:last-child td{border-bottom:0}
+  .t{font-weight:550;color:#f0f6fc;max-width:420px;display:block;line-height:1.45}
+  .muted{color:var(--dim);font-size:12px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .tag.cmcc{background:rgba(59,130,246,.16);color:#60a5fa}
+  .tag.ct{background:rgba(6,182,212,.16);color:#22d3ee}
+  .tag.cu{background:rgba(239,68,68,.16);color:#f87171}
+  .tag.live{background:rgba(34,197,94,.15);color:#4ade80}
+  .tag.gone{background:rgba(139,152,165,.15);color:#94a3b8}
+  .amt{font-variant-numeric:tabular-nums;font-weight:600;color:#fbbf24;white-space:nowrap}
+  .dl{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .dl.hot{color:var(--danger);font-weight:600}
+  .dl.soon{color:var(--warn)}
+  a.src{color:var(--acc2);text-decoration:none;font-size:12.5px;white-space:nowrap}
+  a.src:hover{text-decoration:underline}
+  a.snap{color:#4ade80;font-weight:600}
+  .empty{padding:52px;text-align:center;color:var(--dim)}
+  .foot{margin-top:16px;color:var(--dim);font-size:12px;display:flex;gap:18px;flex-wrap:wrap}
+  .kbd{background:var(--panel2);padding:1px 6px;border-radius:4px;font-size:11px;border:1px solid var(--line)}
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--panel2);border:1px solid var(--acc);
+    padding:12px 18px;border-radius:9px;font-size:13px;opacity:0;transform:translateY(12px);transition:.25s;pointer-events:none;z-index:99}
+  .toast.on{opacity:1;transform:translateY(0)}
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{color:#e6edf3;background:#222a38}
+  th .arrow{font-size:9px;opacity:.35;margin-left:4px}
+  th.on .arrow{opacity:1;color:var(--acc)}
+  th.on{color:#dbeafe}
+  .sortbar{display:inline-flex;align-items:center;gap:6px}
+  .chip{background:#1b2230;border:1px solid #2c3546;color:#c7d2e0;font-size:12px;
+    padding:5px 10px;border-radius:999px;cursor:pointer;font-family:inherit}
+  .chip:hover{border-color:#3d4a60;color:#e6edf3}
+  .chip.on{background:rgba(56,189,248,.14);border-color:var(--acc);color:#bae6fd}
+  .chip .a{font-size:10px;margin-left:3px;opacity:.75}
+  /* 表头列筛选 */
+  th{position:relative;white-space:nowrap}
+  .fbtn{display:inline-block;margin-left:5px;padding:0 4px;border-radius:5px;font-size:10px;
+    line-height:15px;color:#5c6b82;background:#1b2230;border:1px solid #2c3546;cursor:pointer;
+    vertical-align:middle;font-weight:400}
+  .fbtn:hover{color:#bae6fd;border-color:#3d4a60}
+  .fbtn.on{color:#0b1220;background:var(--acc);border-color:var(--acc);font-weight:700}
+  #cfPop{position:fixed;z-index:120;min-width:220px;max-width:320px;background:#131a26;
+    border:1px solid #2c3546;border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.55);
+    padding:11px;display:none;font-size:12.5px;color:#dbe3ee}
+  #cfPop h4{margin:0 0 9px;font-size:12.5px;color:#93c5fd;font-weight:600}
+  #cfPop input,#cfPop select{width:100%;box-sizing:border-box;background:#0d1520;
+    border:1px solid #2c3546;color:#e6edf3;border-radius:6px;padding:5px 7px;font-size:12.5px;
+    margin:3px 0;font-family:inherit}
+  #cfPop input[type=checkbox]{width:auto;margin:0}
+  #cfPop label.ck{display:flex;align-items:center;gap:7px;padding:3px 2px;cursor:pointer;border-radius:5px}
+  #cfPop label.ck:hover{background:#1b2230}
+  #cfPop .act{display:flex;gap:6px;margin-top:9px}
+  #cfPop .act button{flex:1;border:0;border-radius:6px;padding:6px 0;font-size:12.5px;
+    cursor:pointer;font-family:inherit;color:#fff}
+  #cfPop .b1{background:#2563eb}
+  #cfPop .b2{background:#1f2937;color:#c7d2e0}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="logo">📡</div>
+  <div>
+    <h1>运营商投标雷达</h1>
+    <div class="sub">Bid Radar · 运营商招标信息自动采集与永久存档</div>
+  </div>
+  <div class="live"><span class="dot"></span><span id="liveTxt">本地数据库已连接</span></div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="k">记录总数</div><div class="v" id="s-total">—</div></div>
+  <div class="card g"><div class="k">官网在架</div><div class="v" id="s-active">—</div></div>
+  <div class="card w"><div class="k">已下架存档</div><div class="v" id="s-arch">—</div></div>
+  <div class="card c"><div class="k">含金额</div><div class="v" id="s-amt">—</div></div>
+  <div class="card w"><div class="k">已公示中选</div><div class="v" id="s-win">—</div></div>
+  <div class="card"><div class="k">中国移动</div><div class="v" id="s-cmcc">—</div></div>
+  <div class="card"><div class="k">中国电信</div><div class="v" id="s-ct">—</div></div>
+  <div class="card"><div class="k">中国联通</div><div class="v" id="s-cu">—</div></div>
+</div>
+
+<div class="bar">
+  <input type="text" id="kw" placeholder="搜索名称 / 省份 / 内容 / 中选厂商…">
+  <select id="op">
+    <option value="all">全部运营商</option>
+    <option value="中国移动">中国移动</option>
+    <option value="中国电信">中国电信</option>
+    <option value="中国联通">中国联通</option>
+  </select>
+  <select id="st">
+    <option value="all">全部状态</option>
+    <option value="active">官网在架</option>
+    <option value="archived">已下架存档</option>
+  </select>
+  <select id="dy">
+    <option value="">全部时间</option>
+    <option value="1">今天</option>
+    <option value="3">近 3 天</option>
+    <option value="7">近 7 天</option>
+    <option value="30">近 30 天</option>
+  </select>
+  <span class="sortbar">
+    <span style="font-size:12px;color:var(--muted);margin:0 2px">排序</span>
+    <button class="chip on" data-k="publish_date">发布日期<span class="a">↓</span></button>
+    <button class="chip" data-k="deadline">截止日期<span class="a">↑</span></button>
+    <button class="chip" data-k="amount_value">招标金额<span class="a">↓</span></button>
+    <button class="chip" data-k="title">名称<span class="a">↑</span></button>
+  </span>
+  <button class="btn" onclick="load()">查询</button>
+  <button class="btn" id="cfClear" style="display:none" onclick="clearColFilters()">清空列筛选</button>
+  <div class="spacer"></div>
+  <button class="btn" onclick="exportCSV()">导出 CSV</button>
+  <button class="btn pri" id="rf" onclick="refresh()">立即抓取</button>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead><tr>
+      <th class="sortable" data-k="title" style="width:26%">名称<span class="arrow">↕</span></th>
+      <th style="width:22%">项目建设内容</th>
+      <th>公告类型</th>
+      <th class="sortable on" data-k="publish_date">发布日期<span class="arrow">↓</span></th>
+      <th class="sortable" data-k="deadline">截止日期<span class="arrow">↕</span></th>
+      <th class="sortable" data-k="amount_value">招标金额<span class="arrow">↕</span></th>
+      <th>中选厂商</th>
+      <th>运营商</th>
+      <th>来源</th>
+      <th>状态</th>
+    </tr></thead>
+    <tbody id="tb"><tr><td colspan="10" class="empty">加载中…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="foot">
+  <span>📌 数据持久化：一旦入库即永久保存，官网下线不影响本地记录</span>
+  <span>🌐 公网地址：<a id="pubUrl" href="#" target="_blank" rel="noopener">—</a></span>
+  <span>🕐 上次采集：<span id="lastRun">—</span></span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => (n||0).toLocaleString('zh-CN');
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'), 2600);
+}
+
+function daysLeft(dl){
+  if(!dl) return null;
+  const d = new Date(dl.replace(/-/g,'/'));
+  if(isNaN(d)) return null;
+  return Math.ceil((d - new Date()) / 86400000);
+}
+
+function dlCell(dl){
+  if(!dl) return '<span class="muted">—</span>';
+  const n = daysLeft(dl);
+  let cls = '';
+  if(n !== null){
+    if(n < 0) cls = 'muted';
+    else if(n <= 2) cls = 'hot';
+    else if(n <= 7) cls = 'soon';
+  }
+  const tip = n === null ? '' : (n < 0 ? `已截止${-n}天` : `剩${n}天`);
+  return `<span class="dl ${cls}" title="${tip}">${dl.slice(0,10)}</span>`
+       + (tip ? `<div class="muted" style="font-size:11px">${tip}</div>` : '');
+}
+
+function opTag(op){
+  const m = {'中国移动':'cmcc','中国电信':'ct','中国联通':'cu'};
+  return `<span class="tag ${m[op]||'cmcc'}">${op||'—'}</span>`;
+}
+
+function fmtAmt(v){
+  const n = Number(v);
+  if (!isFinite(n) || n <= 0) return '—';
+  if (n >= 1e8) return (n/1e8).toFixed(2).replace(/\.?0+$/,'') + ' 亿';
+  if (n >= 1e4) return (n/1e4).toFixed(2).replace(/\.?0+$/,'') + ' 万';
+  return n.toLocaleString('zh-CN');
+}
+
+function row(r){
+  const st = r.status === 'active'
+    ? '<span class="tag live">在架</span>'
+    : '<span class="tag gone">已下架</span>';
+  const amt = (r.amount_value != null && r.amount_value !== '')
+    ? `<span class="amt" title="${Number(r.amount_value).toLocaleString('zh-CN')} 元">${fmtAmt(r.amount_value)}</span>`
+    : '<span class="muted">—</span>';
+  const src = r.url
+    ? `<a class="src" href="${r.url}" target="_blank" rel="noopener" title="官网可能已下架，快照更可靠">官网 ↗</a>`
+    : '<span class="muted">—</span>';
+  const snap = r.snapshot_path
+    ? ` · <a class="src snap" href="/api/snapshot?id=${encodeURIComponent(r.id)}" target="_blank"
+         title="本地存档，官网下架后仍可查看">快照</a>` : '';
+  return `<tr>
+    <td><span class="t">${r.title||''}</span>
+        <div class="muted" style="font-size:11px;margin-top:3px">${r.region||''} · ${r.relevance||''} · 首次记录 ${(r.first_seen||'').slice(0,10)}</div></td>
+    <td style="max-width:300px"><span style="font-size:12.5px;line-height:1.5">${r.build_content || '<span class="muted">—</span>'}</span></td>
+    <td><span class="muted">${r.notice_type||'—'}</span></td>
+    <td class="dl">${(r.publish_date||'—')}</td>
+    <td>${dlCell(r.deadline)}</td>
+    <td>${amt}</td>
+    <td>${r.winner ? `<b style="color:#a78bfa">${r.winner}</b>` : '<span class="muted">未公示</span>'}</td>
+    <td>${opTag(r.operator)}</td>
+    <td>${src}${snap}</td>
+    <td>${st}</td>
+  </tr>`;
+}
+
+/* ---------- 排序：默认发布日期最新优先，截止日期可排 ---------- */
+const SORT = {k:'publish_date', dir:-1};
+
+const VAL = {
+  publish_date: r => r.publish_date || '',
+  deadline:     r => r.deadline || '',
+  amount_value: r => Number(r.amount_value) || 0,
+  title:        r => r.title || ''
+};
+
+/* ================= 列筛选：10 列表头逐列筛选 ================= */
+let RAW = [], VIEW = [];
+const CF = {};                       // 列筛选条件，key = 列 key
+const today10 = () => new Date().toISOString().slice(0,10);
+
+function sourceKind(r){
+  const a = [];
+  if (r.url) a.push('有官网链接');
+  if (r.snapshot_path) a.push('有本地快照');
+  return a.length ? a : ['无链接'];
+}
+
+const COLS = [
+  {k:'title',         t:'text', label:'名称',        get:r => r.title || ''},
+  {k:'build_content', t:'text', label:'项目建设内容', get:r => r.build_content || ''},
+  {k:'notice_type',   t:'enum', label:'公告类型',    get:r => r.notice_type || '未标注'},
+  {k:'publish_date',  t:'date', label:'发布日期',    get:r => (r.publish_date||'').slice(0,10)},
+  {k:'deadline',      t:'date', label:'截止日期',    get:r => (r.deadline||'').slice(0,10)},
+  {k:'amount_value',  t:'amt',  label:'招标金额',    get:r => r.amount_value},
+  {k:'winner',        t:'text', label:'中选厂商',    get:r => r.winner || '未公示'},
+  {k:'operator',      t:'enum', label:'运营商',      get:r => r.operator || '未标注'},
+  {k:'source',        t:'enum', label:'来源',        get:r => sourceKind(r)},
+  {k:'status',        t:'enum', label:'状态',        get:r => (r.status === 'active' ? '在架' : '已下架')}
+];
+
+function cfActive(k){
+  const v = CF[k];
+  if (v == null) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return !!(v.from || v.to || v.min || v.max);
+  return String(v).trim() !== '';
+}
+function cfCount(){ return COLS.filter(c => cfActive(c.k)).length; }
+
+function matchCol(col, r){
+  if (!cfActive(col.k)) return true;
+  const v = CF[col.k];
+  if (col.t === 'text'){
+    return String(col.get(r) || '').toLowerCase()
+      .includes(String(v).trim().toLowerCase());
+  }
+  if (col.t === 'enum'){
+    return [].concat(col.get(r) || []).some(x => v.includes(x));
+  }
+  if (col.t === 'date'){
+    const d = col.get(r) || '';
+    if (!d) return false;                       // 该列无值 → 设了日期条件就不计入
+    if (v.from && d < v.from) return false;
+    if (v.to && d > v.to) return false;
+    return true;
+  }
+  if (col.t === 'amt'){
+    const n = Number(col.get(r));
+    if (!isFinite(n) || n <= 0) return false;
+    if (v.min !== '' && v.min != null && n < Number(v.min) * 1e4) return false;
+    if (v.max !== '' && v.max != null && n > Number(v.max) * 1e4) return false;
+    return true;
+  }
+  return true;
+}
+
+function applyColFilters(rows){
+  const act = COLS.filter(c => cfActive(c.k));
+  if (!act.length) return rows.slice();
+  return rows.filter(r => act.every(c => matchCol(c, r)));
+}
+
+/* ---- 表头弹层 ---- */
+const pop = document.createElement('div');
+pop.id = 'cfPop';
+document.body.appendChild(pop);
+let popKey = null;
+
+function colValues(col){
+  const m = new Map();
+  RAW.forEach(r => {
+    [].concat(col.get(r) || []).forEach(x => {
+      const s = String(x || '—');
+      m.set(s, (m.get(s) || 0) + 1);
+    });
+  });
+  return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'));
+}
+
+function openPop(th, col){
+  popKey = col.k;
+  const v = CF[col.k];
+  let h = `<h4>筛选 · ${col.label}</h4>`;
+  if (col.t === 'text'){
+    h += `<input id="cfTxt" placeholder="包含文字，留空＝不限" value="${String(v||'').replace(/"/g,'&quot;')}">`;
+  } else if (col.t === 'enum'){
+    const sel = Array.isArray(v) ? v : [];
+    h += `<div style="max-height:210px;overflow:auto">`;
+    colValues(col).forEach(([name, n]) => {
+      h += `<label class="ck"><input type="checkbox" value="${name.replace(/"/g,'&quot;')}"${sel.includes(name)?' checked':''}>
+            <span>${name}</span><span style="margin-left:auto;color:#5c6b82">${n}</span></label>`;
+    });
+    h += `</div><div style="margin-top:6px;font-size:11.5px;color:#5c6b82">可多选；一个不勾＝不限</div>`;
+  } else if (col.t === 'date'){
+    const o = v || {};
+    h += `<div style="color:#8fa3bd">起（含）</div><input type="date" id="cfFrom" value="${o.from||''}">
+          <div style="color:#8fa3bd;margin-top:4px">止（含）</div><input type="date" id="cfTo" value="${o.to||''}">`;
+  } else if (col.t === 'amt'){
+    const o = v || {};
+    h += `<div style="color:#8fa3bd">最低金额（万元）</div>
+          <input type="number" id="cfMin" min="0" step="1" value="${o.min ?? ''}" placeholder="不限">
+          <div style="color:#8fa3bd;margin-top:4px">最高金额（万元）</div>
+          <input type="number" id="cfMax" min="0" step="1" value="${o.max ?? ''}" placeholder="不限">
+          <div style="font-size:11.5px;color:#5c6b82;margin-top:5px">留空＝不限；库里按元存整数</div>`;
+  }
+  h += `<div class="act"><button class="b1" id="cfOk">应用</button>
+        <button class="b2" id="cfClr">清除本列</button></div>`;
+  pop.innerHTML = h;
+  pop.style.display = 'block';
+  const r = th.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 12)) + 'px';
+  pop.style.top = Math.min(r.bottom + 6, window.innerHeight - pop.offsetHeight - 12) + 'px';
+
+  $('cfOk').onclick = () => {
+    if (col.t === 'text') CF[col.k] = $('cfTxt').value.trim();
+    else if (col.t === 'enum') CF[col.k] = [...pop.querySelectorAll('input:checked')].map(i => i.value);
+    else if (col.t === 'date') CF[col.k] = {from: $('cfFrom').value, to: $('cfTo').value};
+    else CF[col.k] = {min: $('cfMin').value, max: $('cfMax').value};
+    closePop(); renderView();
+  };
+  $('cfClr').onclick = () => { delete CF[col.k]; closePop(); renderView(); };
+}
+function closePop(){ pop.style.display = 'none'; popKey = null; }
+document.addEventListener('mousedown', e => {
+  if (pop.style.display !== 'block') return;
+  if (pop.contains(e.target) || (e.target.classList && e.target.classList.contains('fbtn'))) return;
+  closePop();
+});
+window.addEventListener('resize', closePop);
+
+function initFunnels(){
+  document.querySelectorAll('thead th').forEach((th, i) => {
+    const col = COLS[i];
+    if (!col || th.querySelector('.fbtn')) return;
+    const b = document.createElement('span');
+    b.className = 'fbtn'; b.textContent = '筛';
+    b.addEventListener('click', e => {
+      e.stopPropagation();                      // 不触发排序
+      if (popKey === col.k && pop.style.display === 'block') { closePop(); return; }
+      openPop(th, col);
+    });
+    th.appendChild(b);
+  });
+  syncFunnel();
+}
+
+function syncFunnel(){
+  document.querySelectorAll('thead th').forEach((th, i) => {
+    const col = COLS[i], b = th.querySelector('.fbtn');
+    if (!col || !b) return;
+    const on = cfActive(col.k);
+    b.classList.toggle('on', on);
+    b.title = on ? `${col.label}：已筛选（点击修改）` : `${col.label}：点击筛选`;
+  });
+  const c = cfCount(), el = $('cfClear');
+  if (el){
+    el.style.display = c ? '' : 'none';
+    el.textContent = `清空列筛选 (${c})`;
+  }
+}
+
+function clearColFilters(){
+  Object.keys(CF).forEach(k => delete CF[k]);
+  renderView();
+  toast('已清空表头列筛选');
+}
+
+function renderView(){
+  const rows = applySort(applyColFilters(RAW));
+  VIEW = rows;
+  const tb = $('tb');
+  if (!rows.length){
+    tb.innerHTML = '<tr><td colspan="10" class="empty">没有符合条件的记录 — 放宽表头筛选条件试试</td></tr>';
+  } else {
+    tb.innerHTML = rows.map(row).join('');
+  }
+  const sk = {publish_date:'发布日期', deadline:'截止日期', amount_value:'金额', title:'名称'}[SORT.k] || '发布日期';
+  const n = cfCount();
+  $('liveTxt').textContent = `显示 ${rows.length} / ${RAW.length} 条 · ${sk}${SORT.dir === 1 ? '升序' : '降序'}`
+    + (n ? ` · 列筛选 ${n} 项` : '');
+  syncFunnel();
+}
+
+/* ---- 导出：与当前筛选+排序完全一致 ---- */
+function csvCell(v){
+  const s = (v == null ? '' : String(v));
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportCSV(){
+  if (!VIEW.length){ toast('当前筛选没有数据，未导出'); return; }
+  const head = ['名称','项目建设内容','公告类型','发布日期','截止日期','招标金额(元)',
+                '中选厂商','运营商','省份','相关性','状态','首次记录','官网链接','本地快照'];
+  const lines = [head.join(',')];
+  VIEW.forEach(r => lines.push([
+    r.title, r.build_content, r.notice_type, (r.publish_date||'').slice(0,10),
+    (r.deadline||'').slice(0,10), (r.amount_value == null ? '' : r.amount_value),
+    r.winner, r.operator, r.region, r.relevance,
+    r.status === 'active' ? '在架' : '已下架', (r.first_seen||'').slice(0,10),
+    r.url, r.snapshot_path
+  ].map(csvCell).join(',')));
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  const t = new Date(), p = n => String(n).padStart(2, '0');
+  a.href = URL.createObjectURL(blob);
+  a.download = `投标雷达_${t.getFullYear()}${p(t.getMonth()+1)}${p(t.getDate())}_${p(t.getHours())}${p(t.getMinutes())}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  toast(`已导出 ${VIEW.length} 条 · 与当前筛选排序一致`);
+}
+
+function applySort(rows){
+  const get = VAL[SORT.k] || VAL.publish_date;
+  const arr = rows.slice();
+  const today = new Date().toISOString().slice(0,10);
+  arr.sort((a, b) => {
+    const va = get(a), vb = get(b);
+    if (SORT.k === 'deadline'){
+      // 无截止日期（结果公示类）→ 沉底；已截止 → 排在未截止之后，避免挡住还能投的
+      const ga = (!va) ? 2 : (va < today ? 1 : 0);
+      const gb = (!vb) ? 2 : (vb < today ? 1 : 0);
+      if (ga !== gb) return ga - gb;
+      if (!va && !vb) return String(b.id||'').localeCompare(String(a.id||''));
+    }
+    if (va === vb) return String(b.id||'').localeCompare(String(a.id||''));  // 同值按入库先后
+    return va > vb ? SORT.dir : -SORT.dir;
+  });
+  return arr;
+}
+
+function syncSortUI(){
+  // 表头箭头
+  document.querySelectorAll('th.sortable').forEach(th => {
+    const k = th.dataset.k;
+    const on = k === SORT.k;
+    th.classList.toggle('on', on);
+    const ar = th.querySelector('.arrow');
+    if (ar) ar.textContent = on ? (SORT.dir === 1 ? '↑' : '↓') : '↕';
+  });
+  // 顶部排序标签
+  document.querySelectorAll('.chip[data-k]').forEach(c => {
+    const on = c.dataset.k === SORT.k;
+    c.classList.toggle('on', on);
+    const a = c.querySelector('.a');
+    if (a) a.textContent = on ? (SORT.dir === 1 ? '↑' : '↓') : (c.dataset.defaultDir === '1' ? '↑' : '↓');
+  });
+}
+
+function setSort(k, dir){
+  SORT.k = k;
+  SORT.dir = dir;
+  syncSortUI();
+  renderView();          // 只重排当前数据，不重新请求；列筛选保持生效
+}
+
+async function load(){
+  const q = new URLSearchParams({
+    kw: $('kw').value.trim(), operator: $('op').value,
+    status: $('st').value, days: $('dy').value, limit: 2000
+  });
+  try{
+    const res = await fetch('/api/bids?' + q);
+    const j = await res.json();
+    RAW = j.rows || [];
+    renderView();
+  }catch(e){
+    $('tb').innerHTML = '<tr><td colspan="10" class="empty">接口未连接，请先启动 app.py</td></tr>';
+  }
+  loadStats();
+}
+
+async function loadStats(){
+  try{
+    const j = await (await fetch('/api/stats')).json();
+    $('s-total').textContent = fmt(j.total);
+    $('s-active').textContent = fmt(j.active);
+    $('s-arch').textContent = fmt(j.archived);
+    $('s-amt').textContent = fmt(j.with_amount);
+    $('s-win').textContent = fmt(j.with_winner);
+    $('s-cmcc').textContent = fmt(j.cmcc);
+    $('s-ct').textContent = fmt(j.ct);
+    $('s-cu').textContent = fmt(j.cu);
+    $('lastRun').textContent = j.last_run || '尚未采集';
+    if (j.public_url) {
+      var pu = $('pubUrl');
+      pu.textContent = j.public_url.replace(/^https:\/\//, '');
+      pu.href = j.public_url;
+      pu.title = j.public_url;
+    }
+  }catch(e){}
+}
+
+async function refresh(){
+  const b = $('rf');
+  b.disabled = true; b.textContent = '抓取中…';
+  try{
+    await fetch('/api/refresh', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({which:'all', pages:2})});
+    toast('抓取已在后台启动，约 1-2 分钟后自动刷新');
+    setTimeout(()=>{ load(); }, 25000);
+    setTimeout(()=>{ load(); }, 60000);
+  }catch(e){ toast('启动失败：' + e.message); }
+  setTimeout(()=>{ b.disabled = false; b.textContent = '立即抓取'; }, 8000);
+}
+
+$('kw').addEventListener('keydown', e => { if(e.key === 'Enter') load(); });
+['op','st','dy'].forEach(id => $(id).addEventListener('change', load));
+
+// 顶部排序标签：点已选中的再点一次切换方向
+document.querySelectorAll('.chip[data-k]').forEach(c => {
+  const k = c.dataset.k;
+  c.dataset.defaultDir = (k === 'publish_date' || k === 'amount_value') ? '-1' : '1';
+  c.addEventListener('click', () => {
+    if (SORT.k === k) setSort(k, -SORT.dir);
+    else setSort(k, Number(c.dataset.defaultDir));
+  });
+});
+
+// 表头点击：已在当前列则切换方向，否则切到该列（日期类默认新/近优先）
+document.querySelectorAll('th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (SORT.k === k) setSort(k, -SORT.dir);
+    else setSort(k, (k === 'title' || k === 'deadline') ? 1 : -1);
+  });
+});
+
+syncSortUI();
+initFunnels();
+load();
+</script>
+</body>
+</html>

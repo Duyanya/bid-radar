@@ -1,0 +1,21 @@
+[Unit]
+Description=Bid Radar web (static + JSON API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bidradar
+Group=bidradar
+WorkingDirectory=/opt/bid-radar
+Environment=PYTHONIOENCODING=utf-8
+Environment=HOST=127.0.0.1
+Environment=PORT=8848
+ExecStart=/opt/bid-radar/.venv/bin/python /opt/bid-radar/app.py
+Restart=always
+RestartSec=3
+# 只读系统盘时也能跑：数据目录单独给了写权限
+ReadWritePaths=/opt/bid-radar/data
+
+[Install]
+WantedBy=multi-user.target

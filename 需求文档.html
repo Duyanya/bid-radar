@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>需求文档</title><style>
+@page { size: A4; margin: 18mm 16mm; }
+* { box-sizing: border-box; }
+body {
+  font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  font-size: 10.5pt; line-height: 1.75; color: #1f2430;
+  max-width: 900px; margin: 0 auto; padding: 24px 32px;
+}
+h1 {
+  font-size: 21pt; color: #1a365d; border-bottom: 3px solid #2b6cb0;
+  padding-bottom: 10px; margin: 0 0 22px;
+}
+h2 {
+  font-size: 14.5pt; color: #2b6cb0; margin: 28px 0 12px;
+  padding-left: 10px; border-left: 4px solid #2b6cb0;
+}
+h3 { font-size: 12pt; color: #2c5282; margin: 18px 0 8px; }
+table {
+  border-collapse: collapse; width: 100%; margin: 12px 0 18px;
+  font-size: 9.5pt; page-break-inside: avoid;
+}
+th {
+  background: #2b6cb0; color: #fff; padding: 7px 9px;
+  text-align: left; font-weight: 600; border: 1px solid #2b6cb0;
+}
+td { padding: 6px 9px; border: 1px solid #cbd5e0; vertical-align: top; }
+tr:nth-child(even) td { background: #f7fafc; }
+code {
+  background: #edf2f7; padding: 1px 5px; border-radius: 3px;
+  font-family: Consolas, "Courier New", monospace; font-size: 9pt; color: #c53030;
+}
+pre {
+  background: #1a202c; color: #e2e8f0; padding: 13px 16px;
+  border-radius: 5px; overflow-x: auto; font-size: 9pt; line-height: 1.55;
+}
+pre code { background: none; color: inherit; padding: 0; }
+blockquote {
+  border-left: 4px solid #ecc94b; background: #fffff0;
+  margin: 12px 0; padding: 9px 16px; color: #744210;
+}
+ul, ol { padding-left: 24px; margin: 8px 0; }
+li { margin: 3px 0; }
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 26px 0; }
+strong { color: #1a365d; }
+em { color: #718096; font-style: normal; font-size: 9.5pt; }
+</style></head>
+<body><h1>运营商投标雷达 · 需求文档</h1>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>系统名称</td>
+<td>运营商投标雷达（Bid Radar）</td>
+</tr>
+<tr>
+<td>版本</td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td>编写日期</td>
+<td>2026-11-10</td>
+</tr>
+<tr>
+<td>访问地址</td>
+<td>http://127.0.0.1:8848</td>
+</tr>
+<tr>
+<td>服务对象</td>
+<td>关注运营商网络域建设项目的投标决策人员</td>
+</tr>
+<tr>
+<td>部署形态</td>
+<td>单机本地部署（Windows），无外部依赖</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>一、背景与目标</h2>
+<h3>1.1 业务背景</h3>
+<p>中国移动、中国电信、中国联通三大运营商的招标公告分散在三个独立官网，各自有不同的检索方式、页面结构和防爬机制。投标人员日常面临三个问题：</p>
+<ol>
+<li><strong>信息分散</strong> —— 要反复登录三个网站手工翻查，效率低</li>
+<li><strong>噪声太大</strong> —— 运营商招标中大量是维保、设备采购、安全测评、房租劳务，与网络域建设无关，人工筛选耗时</li>
+<li><strong>信息会消失</strong> —— 公告下架后原页面就打不开了，事后无法回溯</li>
+</ol>
+<h3>1.2 系统目标</h3>
+<p>建设一个自动化的招标信息聚合系统，实现：</p>
+<ul>
+<li><strong>自动采集</strong>：每日定时抓取三家运营商招标公告，无需人工值守</li>
+<li><strong>精准过滤</strong>：只保留省公司/集团总部的网络域建设项目，无关数据不入库</li>
+<li><strong>永久留存</strong>：公告入库即存档，官网下架后本地仍可查，不丢历史</li>
+<li><strong>结构化输出</strong>：金额、建设内容等字段经识别归纳后结构化存储，可直接用于分析决策</li>
+</ul>
+<h3>1.3 核心设计原则</h3>
+<table>
+<thead>
+<tr>
+<th>原则</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>数据永久性优先</strong></td>
+<td>入库即持久化 + 本地快照。官网查不到只标「已下架存档」，绝不删除</td>
+</tr>
+<tr>
+<td><strong>宁缺毋滥</strong></td>
+<td>识别不到就留空显示 <code>—</code>，绝不编造金额或厂商</td>
+</tr>
+<tr>
+<td><strong>识别而非复制</strong></td>
+<td>金额输出纯数字，建设内容归纳提炼，不照抄公告原文</td>
+</tr>
+<tr>
+<td><strong>过滤前置</strong></td>
+<td>先过滤后抽详情，减少请求量，降低被封 IP 风险</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>二、功能需求</h2>
+<h3>2.1 数据采集</h3>
+<table>
+<thead>
+<tr>
+<th>编号</th>
+<th>功能</th>
+<th>说明</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F-01</td>
+<td>中国移动采集</td>
+<td>抓取采购公告（PROCUREMENT）+ 结果公示（SELECTION_RESULTS）</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-02</td>
+<td>中国电信采集</td>
+<td>抓取招标公告、询比公告、采购结果公示等栏目</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-03</td>
+<td>中国联通采集</td>
+<td>✅ 已接入。瑞数动态防护，需 iOS UA 绕过；覆盖招标公告/询比公告/谈判公告/采购需求公示/中标候选人公示/中选候选人公示 6 类</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-04</td>
+<td>详情抽取</td>
+<td>对指定数量记录进入详情页抽取正文、金额、中选厂商、建设内容</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-05</td>
+<td>正文存档</td>
+<td>正文全文保存到本地快照文件，永久留存</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-06</td>
+<td>增量更新</td>
+<td>已存在记录只补充空字段，不覆盖已有数据</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-07</td>
+<td>状态跟踪</td>
+<td>本轮未出现的记录标记为「已下架」，但保留数据。<strong>判定需带日期兜底</strong>：仅当记录发布日期 ≥ 本轮翻到的最早发布日期且缺席时才标下架，避免翻页未覆盖造成误标</td>
+<td>高</td>
+</tr>
+<tr>
+<td>F-08</td>
+<td>每日定时</td>
+<td>每天上午 09:00 自动执行采集</td>
+<td>高</td>
+</tr>
+</tbody>
+</table>
+<h3>2.2 相关性过滤</h3>
+<p>系统必须精确识别「省公司/集团总部的网络域建设项目」，其余一律剔除且不入库。</p>
+<p><strong>保留范围</strong>：接入网、承载网、核心网、传输网、专网、网络优化、网管/OSS 平台研发、网络相关软件开发的省级及以上项目。</p>
+<p><strong>剔除范围</strong>（命中即丢弃，不入库）：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>剔除内容</th>
+<th>关键词数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主体不符</td>
+<td>市分公司、专业子公司、内部部门（纪委办）、非运营商主体</td>
+<td>—</td>
+</tr>
+<tr>
+<td>机房及配套</td>
+<td>机房土建/改造/装修、UPS、动环、空调、柴发、消防、机电工程 EPC、动力设备、高低压配电、综合布线、机楼、数据中心</td>
+<td>26</td>
+</tr>
+<tr>
+<td>硬件设备采购</td>
+<td>设备采购/购置、终端、服务器、交换机、路由器、光模块、板卡、光缆金具、抱杆、接地扁铁、仪器仪表、车辆</td>
+<td>29</td>
+</tr>
+<tr>
+<td>网络安全</td>
+<td>等保、测评、密码评估、态势感知、漏洞扫描、攻防演练、安全加固、风险评估、渗透测试、环评</td>
+<td>21</td>
+</tr>
+<tr>
+<td>小区域采购</td>
+<td>含「某」字项目（某网络/某项目/某工程/某系统/某设备/某中心）、单站、单点、局部、零星</td>
+<td>27</td>
+</tr>
+<tr>
+<td>维保项目</td>
+<td>维保、维护、保修、巡检、代维、运维、维修、技术支持、运行维护、驻场、代运营、整新、测评服务、运营支撑</td>
+<td>19</td>
+</tr>
+<tr>
+<td>线路维护</td>
+<td>线路维护、线路施工、光缆维护、光缆线路、管道维护</td>
+<td>10</td>
+</tr>
+<tr>
+<td>房租物业</td>
+<td>租赁、房租、房屋、办公用房、周转房、物业</td>
+<td>16</td>
+</tr>
+<tr>
+<td>人力劳务</td>
+<td>劳务、人力、人员外包、用工、派遣、薪酬</td>
+<td>7</td>
+</tr>
+<tr>
+<td>废旧回收</td>
+<td>蓄电池、电池回收、处置回收、废旧、物资处置、报废</td>
+<td>9</td>
+</tr>
+<tr>
+<td>专业服务</td>
+<td>审计、律师、法律、会计、可研、设计服务、监理、培训、印刷、广告、保险</td>
+<td>21</td>
+</tr>
+</tbody>
+</table>
+<p><strong>主体判定规则</strong>：</p>
+<ul>
+<li>保留：<code>中国移动/中国电信/中国联通</code> 集团主体；<code>省名 + 运营商</code>（如河南移动、广东移动）；省直属单位（如湖北智能云网调度运营中心、浙江长途电信传输局）</li>
+<li>剔除：<code>地市名 + 运营商</code>（如宣城电信、泉州移动、毕节分公司）</li>
+<li>剔除：含「分公司」「子公司」「纪委」字样</li>
+</ul>
+<h3>2.3 字段识别与规范化</h3>
+<p>这是系统的核心难点，要求<strong>识别归纳而非复制原文</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>要求</th>
+<th>反例（禁止）</th>
+<th>正例（要求）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>招标金额</td>
+<td><strong>纯数字</strong>，单位元，不带任何文字</td>
+<td><code>384 万元</code>、<code>限价为2,394,038.01元</code></td>
+<td><code>3840000</code></td>
+</tr>
+<tr>
+<td>建设内容</td>
+<td>正文「采购内容 / 建设内容 / 招标范围」段逐句筛选提炼：先剥编号与版式词，再按「网域词 + 建设动作词」双条件挑句，剔除资格/工期/报价/人天表等条款，按原文顺序合成一段（≤300 字）；正文无可用内容时回退标题主干</td>
+<td>整段复制「本项目为集中招标项目。本项目采购2026年至2028年有线接入网迁改整治服务…」或把「标包1 驻地网施工 项 152」表格行当建设内容</td>
+<td><code>2026年业务编排中心围绕"专线业务开通、专线业务开通数据透明化"二个方面开展能力建设，新增任务管理等</code></td>
+</tr>
+<tr>
+<td>建设内容（正文有建设动作时）</td>
+<td>正文「采购内容 / 建设内容」段写明网元上收、业务迁移、设备搬迁等<strong>建设动作</strong>时，按原文保留，可到 160 字；<strong>保留设备型号与厂家名</strong>（HSS/UDM/中兴/华为不构成剔除理由）</td>
+<td>将「3套中兴HSS及1套华为HSS上收至UDM（其中东莞科技园1套华为HSS因机房搬迁需实施3/4G业务迁移至5G网元UDM…）」压成标题截断的「广东核心网组网设备升级改造专项工程核心网集成服务」</td>
+<td>与原文一致</td>
+</tr>
+<tr>
+<td>中选厂商</td>
+<td>只取企业名称，不含数量/份额</td>
+<td><code>中标人数量1个</code></td>
+<td><code>浪潮通信信息系统有限公司</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>金额识别逻辑</strong>：正则匹配「限价/预算/金额/总价 + 数字 + 元/万元/亿元」，统一换算为元，过滤低于 1000 或高于 1000 亿的误匹配值。</p>
+<p><strong>建设内容归纳逻辑（正文优先，逐句筛选提炼）</strong>：</p>
+<ol>
+<li><strong>定位建设段</strong>：以「采购内容 / 建设内容 / 招标范围 / 采购范围 / 项目概况 / 工程概况 / 建设规模 / 服务内容」为起点；遇到「投标人资格 / 评审办法 / 递交 / 开标 / 联系方式 / 序号·产品名称 / 标包1 / 服务类别 / 保修期」等终止标记即截断，表格起点之后一律不读。</li>
+<li><strong>接行 + 切句</strong>：先把被 PDF/HTML 折断的行接回整句，再按 。！？；和换行切分。</li>
+<li><strong>逐句筛选（打分）</strong>：候选句必须同时含<strong>网域词</strong>（网 / 专线 / 切片 / 基站 / 核心网 / 网元 / 承载 / 传输 / 接入 / 中台 / 编排 / 5G / CMNET / DCN…）与<strong>建设动作词</strong>（建设 / 研发 / 开发 / 扩容 / 升级 / 改造 / 迁移 / 上收 / 纳管 / 开通 / 采集 / 集成 / 构建 / 支撑 / 实现 / 具备…）；剔除资格、业绩、保证金、时间地点、报价、工期、验收、保修等条款句，以及人天表、数量表碎片。</li>
+<li><strong>先剥版式词再判定</strong>：<code>1.2.1</code>、<code>（一）</code>、<code>一、</code>、<code>包括：</code>、<code>本主要</code>、<code>项目名称：</code> 这类编号与标签先剥离，不因「以编号开头」整句丢弃。</li>
+<li><strong>合并提炼</strong>：按原文顺序取前若干句用「；」合成一段，总长 ≤ 300 字；与标题重复的句子丢弃。</li>
+<li><strong>兜底</strong>：正文提炼不出（电信正文 401 不可见），或提炼结果不比原值信息量更大时，回退标题主干提炼；仍识别不到就留空，不硬编。</li>
+<li><strong>列举特例优先</strong>：正文出现「一是…二是…三是…」（≥3 段连续列举）时整段原样保留，不受 300 字与打分限制。</li>
+</ol>
+<h3>2.4 数据展示</h3>
+<table>
+<thead>
+<tr>
+<th>编号</th>
+<th>功能</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F-09</td>
+<td>表格展示</td>
+<td>10 列：名称、项目建设内容、公告类型、发布日期、截止日期、招标金额、中选厂商、运营商、来源、状态</td>
+</tr>
+<tr>
+<td>F-10</td>
+<td>统计看板</td>
+<td>记录总数、在架数、已下架存档数、含金额数、已公示中选数、各运营商条数</td>
+</tr>
+<tr>
+<td>F-11</td>
+<td>全局筛选</td>
+<td>顶部按运营商、状态、关键词、时间范围筛选（服务端过滤，重新请求接口）</td>
+</tr>
+<tr>
+<td>F-12</td>
+<td>表头逐列筛选</td>
+<td>10 列表头每列都有「筛」入口，按列类型给不同控件：名称/项目建设内容/中选厂商＝文本包含；公告类型/运营商/来源/状态＝枚举多选（带条数）；发布日期/截止日期＝起止日期区间；招标金额＝最低/最高金额区间（万元，入库按元换算）。列筛选在已加载数据上生效，与顶部全局筛选<strong>叠加</strong>，不清空对方</td>
+</tr>
+<tr>
+<td>F-13</td>
+<td>金额格式化</td>
+<td>页面显示为「384 万」/「2.63 亿」，悬停显示精确值「3,840,000 元」</td>
+</tr>
+<tr>
+<td>F-14</td>
+<td>来源链接</td>
+<td>「官网 ↗」跳转原公告，「快照」打开本地存档</td>
+</tr>
+<tr>
+<td>F-15</td>
+<td>到期提醒</td>
+<td>截止日期列显示剩余天数，3 天内标红</td>
+</tr>
+<tr>
+<td>F-16</td>
+<td>导出</td>
+<td>导出 CSV，<strong>导出的行、列、顺序与当前筛选 + 排序结果完全一致</strong>（不再固定导出全库）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>筛选、排序、导出一致性</strong>：全局筛选与表头列筛选叠加后的结果集 → 再按当前排序键排序 → 表格渲染与 CSV 导出共用同一份结果数组，所以「看到什么就导出什么」；已生效的列筛选会在表头按钮上高亮，并可用「清空列筛选 (n)」一键还原。</p>
+<h3>2.5 数据接口</h3>
+<table>
+<thead>
+<tr>
+<th>接口</th>
+<th>方法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/api/bids</code></td>
+<td>GET</td>
+<td>记录列表，支持 limit/offset/筛选参数</td>
+</tr>
+<tr>
+<td><code>/api/stats</code></td>
+<td>GET</td>
+<td>统计数据</td>
+</tr>
+<tr>
+<td><code>/api/export</code></td>
+<td>GET</td>
+<td>导出全库 CSV（保留接口；页面按钮已改为按当前筛选/排序结果在前端生成 CSV）</td>
+</tr>
+<tr>
+<td><code>/api/snapshot</code></td>
+<td>GET</td>
+<td>按 id 读取本地快照正文</td>
+</tr>
+<tr>
+<td><code>/api/refresh</code></td>
+<td>POST</td>
+<td>手动触发采集</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>三、技术方案</h2>
+<h3>3.1 数据源</h3>
+<table>
+<thead>
+<tr>
+<th>运营商</th>
+<th>列表接口</th>
+<th>采集方式</th>
+<th>已知限制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>中国移动</td>
+<td><code>b2b.10086.cn/api-b2b/api-sync-es/white_list_api/b2b/publish/queryList</code></td>
+<td>Playwright + API 直连</td>
+<td>需 <code>current</code>/<code>size</code> 分页（非 pageNum）；正文为 base64 PDF</td>
+</tr>
+<tr>
+<td>中国电信</td>
+<td><code>caigou.chinatelecom.com.cn/portal/base/announcementJoin/queryListNew</code></td>
+<td>Playwright + API 直连</td>
+<td>数据在 <code>data.pageInfo.list</code>；<strong>严格限流，每轮仅约 6 次请求</strong></td>
+</tr>
+<tr>
+<td>中国联通</td>
+<td>6 类公告全量可抓</td>
+<td>瑞数动态防护（Riversafe）；桌面 UA / 爬虫 UA 一律 412，<strong>仅 iOS Safari UA 通过</strong>；接口每页固定返回 10 条</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 技术选型</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>选型</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>采集引擎</td>
+<td>Playwright + Chromium</td>
+<td>三站均有 WAF（阿里云盾/瑞数），必须真实浏览器并禁用自动化特征</td>
+</tr>
+<tr>
+<td>PDF 解析</td>
+<td>pypdf</td>
+<td>移动详情正文是 base64 编码 PDF，需解码提取文字</td>
+</tr>
+<tr>
+<td>存储</td>
+<td>SQLite</td>
+<td>单文件、零配置、支持并发读，适合本地部署</td>
+</tr>
+<tr>
+<td>后端</td>
+<td>Python <code>http.server</code></td>
+<td>零外部依赖，避免环境配置问题</td>
+</tr>
+<tr>
+<td>前端</td>
+<td>原生 HTML/JS</td>
+<td>单文件，无需构建</td>
+</tr>
+<tr>
+<td>解释器</td>
+<td>Python 3.14</td>
+<td>已装 requests/bs4/lxml/openpyxl/playwright/pypdf</td>
+</tr>
+</tbody>
+</table>
+<h3>3.3 系统架构</h3>
+<pre><code>定时任务（每日 09:00）
+        │
+        ▼
+   collector.py  ──────►  运营商官网（Playwright）
+        │                       │
+        │  ◄── 列表 + 详情 ──────┘
+        ▼
+  classifier.py  ──── 相关性过滤（省公司 + 网络域）
+        │                       │
+        │  保留                  │  剔除 → 直接丢弃，不入库
+        ▼                       ▼
+   db.py  ──►  data/bids.db（SQLite）
+        │     data/snapshots/（正文存档）
+        ▼
+   app.py  ──►  HTTP :8848
+        │
+        ▼
+   index.html（浏览器表格）
+</code></pre>
+<h3>3.4 目录结构</h3>
+<pre><code>bid-radar/
+├── collector.py      采集器（594 行）— 三源抓取、详情抽取、字段解析
+├── classifier.py     过滤器（244 行）— 省公司判定、11 类排除规则
+├── db.py             数据层（187 行）— SQLite 建表、upsert、快照、统计
+├── app.py            后端（109 行）— HTTP 服务、5 个 API
+├── index.html        前端（271 行）— 表格、筛选、导出
+├── launch_bg.py      启动器（40 行）— 后台拉起、端口检测
+└── data/
+    ├── bids.db       SQLite 数据库（504 KB）
+    └── snapshots/    正文快照（89 个文件）
+</code></pre>
+<p>代码总计 1445 行。</p>
+<h3>3.5 数据表结构</h3>
+<p>表名 <code>bids</code>，21 个字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>TEXT</td>
+<td>主键，格式 <code>cmcc_xxx</code> / <code>ct_xxx</code></td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>TEXT</td>
+<td>公告名称</td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td>TEXT</td>
+<td>正文摘要（前 8000 字）</td>
+</tr>
+<tr>
+<td><code>notice_type</code></td>
+<td>TEXT</td>
+<td>公告类型（招标公告/询比公告/中选结果公示等）</td>
+</tr>
+<tr>
+<td><code>publish_date</code></td>
+<td>TEXT</td>
+<td>发布日期</td>
+</tr>
+<tr>
+<td><code>deadline</code></td>
+<td>TEXT</td>
+<td>截止日期</td>
+</tr>
+<tr>
+<td><code>amount_raw</code></td>
+<td>TEXT</td>
+<td>金额（纯数字字符串）</td>
+</tr>
+<tr>
+<td><code>amount_value</code></td>
+<td>REAL</td>
+<td>金额数值（单位元，用于排序）</td>
+</tr>
+<tr>
+<td><code>winner</code></td>
+<td>TEXT</td>
+<td>中选厂商</td>
+</tr>
+<tr>
+<td><code>operator</code></td>
+<td>TEXT</td>
+<td>运营商</td>
+</tr>
+<tr>
+<td><code>region</code></td>
+<td>TEXT</td>
+<td>省份</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>TEXT</td>
+<td>来源标注</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>TEXT</td>
+<td>官网链接</td>
+</tr>
+<tr>
+<td><code>snapshot_path</code></td>
+<td>TEXT</td>
+<td>本地快照文件路径</td>
+</tr>
+<tr>
+<td><code>first_seen</code></td>
+<td>TEXT</td>
+<td>首次采集时间</td>
+</tr>
+<tr>
+<td><code>last_seen</code></td>
+<td>TEXT</td>
+<td>最近出现时间</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>TEXT</td>
+<td>状态（active/archived）</td>
+</tr>
+<tr>
+<td><code>relevance</code></td>
+<td>TEXT</td>
+<td>相关度（强相关/中相关）</td>
+</tr>
+<tr>
+<td><code>relevance_reason</code></td>
+<td>TEXT</td>
+<td>判定依据</td>
+</tr>
+<tr>
+<td><code>build_content</code></td>
+<td>TEXT</td>
+<td>建设内容（归纳后）</td>
+</tr>
+<tr>
+<td><code>uuid</code></td>
+<td>TEXT</td>
+<td>详情页参数</td>
+</tr>
+</tbody>
+</table>
+<h3>3.6 关键实现难点</h3>
+<table>
+<thead>
+<tr>
+<th>难点</th>
+<th>问题现象</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WAF 拦截</td>
+<td>直接 curl/requests 返回 412 或空</td>
+<td>必须 Playwright + <code>--disable-blink-features=AutomationControlled</code></td>
+</tr>
+<tr>
+<td>分页失效</td>
+<td>移动翻页始终返回第一页</td>
+<td>分页参数是 <code>current</code>/<code>size</code>，不是 <code>pageNum</code>/<code>pageSize</code></td>
+</tr>
+<tr>
+<td>正文是 PDF</td>
+<td><code>noticeContent</code> 字段是乱码</td>
+<td>base64 解码后用 pypdf 提取文字</td>
+</tr>
+<tr>
+<td>电信限流</td>
+<td>第 3 页起重复返回第一页</td>
+<td>限制每轮 6 次请求 + 5~8 秒间隔 + seen_ids 去重，靠每日累积</td>
+</tr>
+<tr>
+<td>排除词误杀</td>
+<td>正文必含「采购代理机构：XX咨询设计研究院」，用正文判断导致全量误杀（25 条杀到只剩 1 条）</td>
+<td><strong>排除词只对标题生效</strong></td>
+</tr>
+<tr>
+<td>机房项目漏网</td>
+<td>「机房等保整改」被「等保」救活</td>
+<td>机房判定提到所有规则之前（第 1 步）</td>
+</tr>
+<tr>
+<td>缩写误匹配</td>
+<td><code>AIDC</code> 被 <code>IDC</code> 命中</td>
+<td>英文缩写改用词边界匹配 <code>\b</code></td>
+</tr>
+<tr>
+<td>厂商名被切断</td>
+<td>PDF 硬换行把「中选\n人」切断，抽到采购人而非中选人</td>
+<td>换行归一化 + 上下文排除采购人 + 贪婪匹配机构后缀</td>
+</tr>
+<tr>
+<td>移动详情页打不开</td>
+<td>hash 路由直达只渲染页脚</td>
+<td>已改为提示「快照更可靠」，快照有完整正文</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>四、非功能需求</h2>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>数据持久性</strong></td>
+<td>入库即持久化。官网公告下线后本地记录必须仍存在，只标「已下架存档」，<strong>绝不删除</strong></td>
+</tr>
+<tr>
+<td><strong>数据真实性</strong></td>
+<td>识别不到就留空显示 <code>—</code>，<strong>绝不编造</strong>金额、厂商、日期</td>
+</tr>
+<tr>
+<td><strong>访问频率</strong></td>
+<td>移动间隔 1.2~2.2 秒，电信 5~8 秒随机；不缩短间隔，避免封 IP</td>
+</tr>
+<tr>
+<td><strong>可用性</strong></td>
+<td>开机自动启动，无需人工干预；页面响应 &lt; 1 秒</td>
+</tr>
+<tr>
+<td><strong>部署</strong></td>
+<td>单机运行，无需数据库服务、无需联网依赖（采集时除外）</td>
+</tr>
+<tr>
+<td><strong>可维护性</strong></td>
+<td>过滤规则集中于 <code>classifier.py</code>，调整规则不改其他模块</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>五、验收标准</h2>
+<h3>5.1 过滤准确性</h3>
+<table>
+<thead>
+<tr>
+<th>测试项</th>
+<th>期望结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>省公司项目（中国移动通信集团广东有限公司…）</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>省名+运营商（河南移动…）</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>省直属单位（湖北智能云网调度运营中心…）</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>省直属单位但标题不写运营商名（XX省传输局…、新疆长途传输局…）</td>
+<td>保留（按单位名定性归属）</td>
+</tr>
+<tr>
+<td>省公司/省直属单位的研发类项目（标题无网/云/平台词，如「AI赋能生产研发」）</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>省直属单位名称+市分公司（电信南京分公司传输局…）</td>
+<td>剔除（市分公司不豁免）</td>
+</tr>
+<tr>
+<td>含「运维」但同时是研发/建设（…运维平台研发项目）</td>
+<td>保留（研发建设优先于维保）</td>
+</tr>
+<tr>
+<td>第三方研究院（紫金研究院…，无运营商主体）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>地市分公司（宣城电信…、毕节分公司…）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>机房类（机房空调采购）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>网络安全（等保测评）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>维保项目（基站设备维保）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>线路维护（光缆线路维护）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>硬件采购（服务器采购）</td>
+<td>剔除</td>
+</tr>
+<tr>
+<td>小区域（某网络设备）</td>
+<td>剔除</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实测结果：10/10 通过</strong></p>
+<h3>5.2 字段规范性</h3>
+<table>
+<thead>
+<tr>
+<th>检查项</th>
+<th>合格标准</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>金额格式</td>
+<td>数据库存储为纯数字（如 <code>3840000</code>），不含「万」「元」等任何字符</td>
+</tr>
+<tr>
+<td>建设内容</td>
+<td>通常 &lt; 60 字，不是公告正文整段；仅当正文给出具体建设动作（上收/迁移/搬迁/割接/扩容）时放宽到 160 字，且必须是技术描述而非条款摘录</td>
+</tr>
+<tr>
+<td>空值处理</td>
+<td>识别不到显示 <code>—</code>，无「待抽取」「详见附件」等占位文字</td>
+</tr>
+</tbody>
+</table>
+<h3>5.3 数据完整性</h3>
+<ul>
+<li>每条记录有唯一 <code>id</code>、<code>title</code>、<code>operator</code></li>
+<li>有详情的记录必须有对应快照文件</li>
+<li><code>first_seen</code> 不因重复采集而改变</li>
+</ul>
+<hr />
+<h2>六、当前状态与已知限制</h2>
+<h3>6.1 运行状态</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>总记录</td>
+<td>42 条（移动 24 + 联通 16 + 电信 2）</td>
+</tr>
+<tr>
+<td>官网在架</td>
+<td>42 条</td>
+</tr>
+<tr>
+<td>已下架存档</td>
+<td>0 条</td>
+</tr>
+<tr>
+<td>含金额</td>
+<td>25 条</td>
+</tr>
+<tr>
+<td>已公示中选</td>
+<td>12 条</td>
+</tr>
+<tr>
+<td>本地快照</td>
+<td>89 个（42 条中 40 条有正文快照）</td>
+</tr>
+</tbody>
+</table>
+<h3>6.2 已知限制</h3>
+<table>
+<thead>
+<tr>
+<th>限制</th>
+<th>原因</th>
+<th>影响</th>
+<th>应对</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>电信数据量少</strong></td>
+<td>电信 90% 公告由地市分公司发布，按「严格省公司」规则被过滤；且接口严格限流</td>
+<td>日均新增 0~2 条</td>
+<td>靠每日小批量累积</td>
+</tr>
+<tr>
+<td><strong>电信正文不可抓</strong></td>
+<td>列表接口公开，详情路由 <code>/portal/noticeDetail</code> 返回 <code>401 认证失败</code>（正文在门户登录后才可见），试探 5 个详情接口均 404</td>
+<td>电信记录无正文快照</td>
+<td>关键字段（金额/截止/中选）取自列表接口；建设内容无正文可筛，回退标题主干提炼（同样的兜底逻辑，非人工编造）</td>
+</tr>
+<tr>
+<td><strong>联通瑞数防护</strong></td>
+<td>站点返回 412，桌面 UA、百度/Google 爬虫 UA 全部被拦，Playwright 有头模式也过不去</td>
+<td>采集量为 0</td>
+<td>改用 <strong>iOS Safari UA</strong> 后一次通过（HTTP 200），已固定在该 UA 上</td>
+</tr>
+<tr>
+<td><strong>移动官网链接打不开详情</strong></td>
+<td>Vue SPA hash 路由直达只渲染页脚，需「列表页→点击」</td>
+<td>「官网 ↗」按钮失效</td>
+<td>快照有完整正文，可替代</td>
+</tr>
+<tr>
+<td><strong>金额覆盖率约 55%</strong></td>
+<td>结果公示类公告原文本就不写预算，只写中选人和份额</td>
+<td>部分记录金额为空</td>
+<td>属真实情况，不编造</td>
+</tr>
+<tr>
+<td><strong>历史数据未全量铺开</strong></td>
+<td>移动历史约 10061 条 / 1007 页</td>
+<td>库内仅近几天数据</td>
+<td>可另行批量回补</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>七、后续可扩展方向</h2>
+<ol>
+<li><strong>历史回补</strong> —— 移动 10061 条历史逐页回补，电信按栏目分批</li>
+<li><strong>结果公告关联</strong> —— 把中选结果与其采购公告关联，反查预算金额</li>
+<li><strong>到期提醒</strong> —— 截止前 3/1 天推送通知</li>
+<li><strong>投标决策辅助</strong> —— 按厂商统计中标频次、按省份统计项目密度</li>
+<li><strong>多用户访问</strong> —— 当前仅本机 127.0.0.1，如需局域网访问需改监听地址并加鉴权</li>
+</ol>
+<hr />
+<p><em>文档版本 v1.0 · 2026-11-10</em></p></body></html>

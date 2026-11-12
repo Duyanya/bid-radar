@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+bin/
+.venv/
+tmp/
+data/*.bak*
+data/_dry*.txt
+data/_chk.js
+data/bids.db-wal
+data/bids.db-shm
+*.log
+inspect_out.txt
+site_tmp/
