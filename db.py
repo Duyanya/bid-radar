@@ -64,6 +64,16 @@ def init():
         c.executescript(SCHEMA)
 
 
+def checkpoint():
+    """把 WAL 内容并回主库文件。
+
+    SQLite 开 WAL 后，提交的数据先落在 bids.db-wal；只复制 bids.db 会拿到旧数据
+    （实测：主库 42 行、WAL 里 136 行）。任何"复制/提交/打包"库文件之前必须调用它。
+    """
+    with conn() as c:
+        c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
 def save_snapshot(bid_id, html):
     """把详情页原文落盘。官网下线后仍可查。"""
     if not html:

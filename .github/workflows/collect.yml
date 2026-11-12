@@ -40,11 +40,27 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: xvfb-run -a python collector.py all 15 20
 
+      - name: 并回 WAL 并体检
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python - <<'PY'
+          import db, sqlite3
+          db.checkpoint()
+          n = sqlite3.connect("data/bids.db").execute("SELECT COUNT(*) FROM bids").fetchone()[0]
+          print(f"主库行数 {n}（checkpoint 后，提交的就是这个数）")
+          assert n > 100, f"主库只有 {n} 行，疑似数据没并回，终止提交"
+          PY
+          ls -la data/bids.db; ls data/bids.db-wal 2>/dev/null || echo "WAL 已清空（正常）"
+
       - name: 生成静态站点
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          echo "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/" > data/public_url.txt
+          # 公网地址：Cloudflare Pages 建好后，在仓库 Variables 里设 PUBLIC_URL 即可覆盖
+          if [ -n "${{ vars.PUBLIC_URL }}" ]; then
+            echo "${{ vars.PUBLIC_URL }}" > data/public_url.txt
+          fi
           python build_static.py
 
       - name: 统计结果

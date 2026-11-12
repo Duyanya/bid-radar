@@ -1415,12 +1415,21 @@ def run(which="all", pages=3, details=0):
             print(f"   {op}: {n} 条本轮未见，标为已下架存档")
     db.log_run(which, len(all_rows), ins, upd, "")
     print(f"\nDONE fetched={len(all_rows)} kept={len(kept)} inserted={ins} updated={upd}")
-    return len(all_rows), ins, upd
+
     try:                      # 每轮收尾自愈：缺正文的记录补列表页快照，保证快照链接不空
         import snapshot_fill
         snapshot_fill.fill(True)
     except Exception as e:
         print(f"  [snapshot] skip: {type(e).__name__}: {e}")
+
+    # 关键：把 WAL 并回主库，否则外部复制/提交的 bids.db 还是旧数据
+    try:
+        db.checkpoint()
+        print("[db] WAL 已 checkpoint 回主库")
+    except Exception as e:
+        print(f"  [db] checkpoint 失败: {e}")
+
+    return len(all_rows), ins, upd
 
 
 if __name__ == "__main__":
