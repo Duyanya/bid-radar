@@ -159,6 +159,17 @@ def parse_winner(text):
                 continue
             if w and w not in found:
                 found.append(w)
+    # 「包9-…中选人：A … 包1-…中选人：B」：按标包切段，各段各取一家
+    for seg in re.split(r"(?=(?:第?[一二三四五六七八九十\d]{1,2}\s*包|标包\s*\d+|采购包\s*\d+)\s*[-－—])", flat):
+        m = re.search(r"(?:中选人|中标人|成交供应商|成交人|第一名)\s*(?:名称)?\s*[：:为]?\s*"
+                      r"(?:\d+\s*[.、．]\s*)?([一-龥A-Za-z（）()·]{4,40}?"
+                      r"(?:股份有限公司|有限责任公司|有限公司|集团|研究院|设计院|研究所|大学|中心))", seg)
+        if not m:
+            continue
+        w = _cut_name(m.group(1).strip())
+        if w and w not in found and len(w) >= 4:
+            found.append(w)
+
     if not found:
         return None
     return "、".join(found[:3])
@@ -236,6 +247,10 @@ def clean_build(s):
     if len(s) < 4:
         return None
     s = _balance_paren(s)
+    # 「一是…二是…三是…」列举 = 建设内容本身，整段保留（可远超 160 字）
+    _enum = len(re.findall(r"[一二三四五六七八九十]\s*是", s)) >= 3 or s.count("；") >= 3
+    if _enum and len(s) > 60:
+        return s[:500]
     if len(s) > 60:
         cut = s[:60]
         m = max(cut.rfind("）"), cut.rfind("、"))
@@ -649,6 +664,17 @@ def _build_ok(s, title=""):
     return True
 
 
+def _tidy_build(s):
+    """建设内容去运营商主语与泛词尾巴：省份/运营商已在独立列，系统名里不再重复。"""
+    if not s:
+        return s
+    s = re.sub(r"^(?:中国)?(?:移动|联通|电信)通信集团[-一-龥]{2,6}(?:有限公司|公司)", "", s)
+    s = re.sub(r"^[一-龥]{2,4}(?:省|市)?(?:移动|联通|电信)(?:公司|分公司)?", "", s)
+    s = re.sub(r"的(?:开发|技术|业务|运维|集成|支撑|运营)*服务(?:支撑|内容|项目)?$", "", s)
+    s = re.sub(r"(的|等|及|和)$", "", s)
+    return s.strip() or None
+
+
 def parse_build_content(text, title=""):
     """建设内容 / 系统名称。
 
@@ -658,10 +684,10 @@ def parse_build_content(text, title=""):
     """
     enum = _from_body_enum(text) if text else None
     if enum:
-        return enum          # 「一是…四是」列举 = 完整建设内容，优先保留
+        return _tidy_build(enum) or enum   # 「一是…四是」列举 = 完整建设内容，优先保留
     sec = _from_body_section(text, title) if text else None
     if sec and _build_ok(sec, title):
-        return sec           # 正文建设段逐句筛选提炼（主力通道）
+        return _tidy_build(sec) or sec     # 正文建设段逐句筛选提炼（主力通道）
     evo = _from_body_evo(text) if text else None
     if evo:
         return evo[:200]
@@ -670,8 +696,7 @@ def parse_build_content(text, title=""):
         frombody = None
     fromtitle = clean_build(_from_title(title))
     out = frombody or fromtitle
-    # 标题截断常留悬垂虚词（「…开发服务的」），入库前统一削掉
-    return re.sub(r"(的|等|及|和)$", "", out.strip()) if out else out
+    return _tidy_build(out) if out else out
 
 # 标题里的噪声后缀
 _TITLE_NOISE = ("_招标公告", "_询比公告", "_比选公告", "_采购公告", "_中选结果公示",
