@@ -1,0 +1,46 @@
+name: Deploy site to Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 体检：静态站文件齐全
+        run: |
+          set -e
+          test -f site/index.html
+          test -f site/data/bids.json
+          n=$(python3 -c "import json;print(len(json.load(open('site/data/bids.json'))))")
+          echo "静态站记录数：$n"
+          test "$n" -gt 100
+          echo "快照文件：$(ls site/snap | wc -l)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
