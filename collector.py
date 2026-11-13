@@ -204,10 +204,27 @@ def clean_build(s):
     for g in _GENERIC_WORDS:
         s = s.replace(g, "")
     s = re.sub(r"^(本项目|本次|该项目|该|为|对|关于|进行|开展)[：:，、]?", "", s)
+    s = re.sub(r"^(?:第[一二三四五六七八九十\d]+包|标包\s*\d+|采购包\s*\d+|标段\s*[一二三四五六七八九十\d]+)\s*[，,、：:；;]\s*", "", s)
+    s = re.sub(r"^(?:开发|建设|技术|支撑|运维|采购|服务)?(?:服务)?内容\s*(?:包括|包含|为|如下)?\s*[：:，、]\s*", "", s)
     s = re.sub(r"[（(]\s*(第?[一二三四五六七八九十\d]+(次|期|批|阶段)|二次|重新招标|非标|一采非标)\s*[)）]", "", s)
     s = re.sub(r"[（(]\s*[)）]", "", s)
+    # 公告/评审类版式尾巴（用户 2026-11-13：建设内容里不许出现评审、公示这类词）
+    for _ in range(3):
+        s2 = re.sub(r"\s*(?:的)?(?:直接评审|评审结果|评审|中选候选人(?:公示)?|中选结果(?:公示)?|"
+                    r"中标候选人(?:公示)?|中标结果(?:公示|公告)?|成交候选人(?:公示)?|成交结果(?:公示|公告)?|"
+                    r"结果公示|候选公示|中标公示|评标结果|公示|公告|询比采购|询比|比选采购|比选)\s*$", "", s)
+        if s2 == s:
+            break
+        s = s2
+    s = re.sub(r"(?:开发服务|建设服务|技术服务|支撑服务)\s*$", "", s)   # 「…开发服务」这类泛词尾巴
+    s = re.sub(r"(?<=[一-龥])\s+(?=[一-龥])", "", s)      # 「教育 AI 应用」→「教育AI应用」
     s = re.sub(r"[，、]{2,}", "，", s)
-    s = s.strip(" 　_-—–，、（）:《》|｜:：;；。 ")
+    s = re.sub(r"^(?:[一-龥]{0,12})?20\d{2}\s*年?\s*(?:至|到|-|－|—)\s*20\d{2}\s*年?(?:度)?", "", s)  # 「2026年至2028年」
+    s = re.sub(r"^(?:[一-龥]{0,12}?)(?:19|20)\d{2}\s*年(?:度)?", "", s)   # 年份前缀（含前置单位名）
+    s = re.sub(r"^\d{1,2}\s*月\s*[-–—至到]\s*(?:19|20)\d{2}\s*年(?:\d{1,2}\s*月)?\s*", "", s)  # 「9月-2027年8月」
+    s = re.sub(r"(的)?(?:服务|功能的服务)\s*$", "", s) if s.endswith("的服务") else s
+    s = re.sub(r"(的|等|及|和|中|内|与|为|在|对)$", "", s)                       # 悬垂虚词
+    s = s.strip(" 　_-—–，、（）:《》|｜:；。 ")
     if len(s) < 4:
         return None
     s = _balance_paren(s)
@@ -217,6 +234,17 @@ def clean_build(s):
         s = cut[:m + 1] if m > 30 else cut
         s = _balance_paren(s)
     return s.strip(" 　_-—，、（）|｜")
+
+
+def _cut60(c, n=60):
+    """超长句在标点处收口，避免把词切一半（「…无线节」）。"""
+    if len(c) <= n:
+        return c
+    head = c[:n]
+    idx = max(head.rfind(x) for x in "，；。、：")
+    if idx >= 20:
+        return head[:idx]
+    return head[:n - 2].rstrip("，、；：") or head[:n]
 
 
 def _from_body_core(text):
@@ -240,7 +268,7 @@ def _from_body_core(text):
                     continue
                 if re.fullmatch(r"[\d\s、，.%（）()\-]+", c):
                     continue
-                return c[:60]
+                return _cut60(c)
     return None
 
 
@@ -550,6 +578,27 @@ _BUILD_VERB_OK = ("建设", "研发", "开发", "升级", "改造", "扩容", "�
                   "下沉", "扩容", "替换", "打通", "承载", "覆盖", "检测", "验证", "研究")
 
 
+_BUILD_JUNK_RE = (
+    r"发布时间|直接邀请|公示期|报名时间|报名截止|联系方式|联\s*系\s*人|详见附件|见附件",
+    r"序号|品牌描述|单位\s*数量\s*税率|数量\s*税率|合计|小计|备注|技术规范书",
+    r"^(了|的|和|及|并|对|为|在|与|以|将|把)",
+    r"(进行|拟进行|拟开展|拟对|涉及|如下|包括|包含|以及|等)[，。；]?$",
+    r"有限公司对客户",
+)
+
+def _bad_build(s):
+    """明显是表格/条款/截断残句的建设内容，一律判废（回退标题提炼）。"""
+    if not s:
+        return True
+    t = s.strip()
+    for pat in _BUILD_JUNK_RE:
+        if re.search(pat, t):
+            return True
+    if re.match(r"^[一-龥]{0,3}(公司|集团)?对客户", t):
+        return True
+    return False
+
+
 def _build_ok(s, title=""):
     """正文提炼结果的质量闸门：像建设内容才用，否则回退标题。"""
     if not s or not (16 <= len(s) <= 300):
@@ -558,6 +607,31 @@ def _build_ok(s, title=""):
         return False
     if re.search(r"(项|台|套|个|许可|人|次)\s*\d+$", s):
         return False          # 数量表行
+    if _bad_build(s):
+        return False
+    # 空话散文（「通过建设…可提升…」）没有系统/平台落点，换成标题提炼的名字
+    if re.match(r"^(通过|以|为|在|随着|随着)", s) and not any(n in s for n in _SYS_NOUN):
+        return False
+    if s.endswith(("降本", "增效", "提升", "效率", "质量", "水平", "能力", "智能", "赋能")):
+        return False
+    if len(s) > 40 and not any(n in s for n in _SYS_NOUN) and any(w in s for w in ("营销", "推广", "活动", "话术")):
+        return False
+    # 断句残片：分号/逗号切开的首尾小句没有建设动作，说明是从半句开始或半句截断
+    if re.search(r"[，；]", s) and len(s) > 24:
+        cl = [x for x in re.split(r"[，；]", s) if x]
+        if cl:
+            if len(cl[0]) < 12 and not any(v in cl[0] for v in _BUILD_VERB_OK):
+                return False
+            if len(cl[-1]) < 12 and not any(v in cl[-1] for v in _BUILD_VERB_OK):
+                return False
+    # 长句必须以建设落点结尾，否则视为被截断（「…无线节」「…的」）
+    if len(s) > 24:
+        GOOD_END = ("系统", "平台", "中心", "模块", "引擎", "中台", "大脑", "门户", "工作台", "软件",
+                    "沙盘", "可视化", "数据库", "算法", "模型", "网", "网络", "工程", "改造", "升级",
+                    "建设", "研发", "开发", "集成", "服务", "能力", "功能", "资源", "数据", "池", "云",
+                    "方案", "体系", "库", "端", "局", "站", "迁移", "扩容", "优化", "纳管", "贯通")
+        if not s.endswith(GOOD_END):
+            return False
     if not any(v in s for v in _BUILD_VERB_OK):
         return False
     if _same(s, title):
@@ -584,6 +658,8 @@ def parse_build_content(text, title=""):
     if evo:
         return evo[:200]
     frombody = _valid_body_build(clean_build(_from_body_core(text))) if text else None
+    if frombody and _bad_build(frombody):
+        frombody = None
     fromtitle = clean_build(_from_title(title))
     out = frombody or fromtitle
     # 标题截断常留悬垂虚词（「…开发服务的」），入库前统一削掉
