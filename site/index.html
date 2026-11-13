@@ -109,8 +109,12 @@ window.fetch=function(u,opt){u=String(u);
  if(u.indexOf('/api/bids')===0)  return o('./data/bids.json',opt);
  if(u.indexOf('/api/stats')===0) return o('./data/stats.json',opt);
  if(u.indexOf('/api/export')===0)return Promise.reject(new Error('static mode'));
- return o(u,opt);};})();</script>
-</head>
+ if(u.indexOf('/api/refresh')===0)return Promise.resolve(new Response(JSON.stringify({ok:true,static:true}),{status:200,headers:{'Content-Type':'application/json'}}));
+ return o(u,opt);};})();
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('rf');
+if(b){b.textContent='云端每日 09:00 自动更新';b.disabled=true;b.style.opacity=.6;
+b.title='公网站点为静态托管，数据由云端定时任务每天 09:00 抓取后自动发布';}});
+</script></head>
 <body>
 
 <div class="head">
