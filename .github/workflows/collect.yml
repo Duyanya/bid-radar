@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write           # 需要把 data/ 和 site/ 提交回仓库
+  pages: write              # 抓完直接发布到 Pages，不然每日更新上不了线
+  id-token: write
 
 concurrency:
   group: bid-radar-collect
@@ -83,3 +85,15 @@ jobs:
             git commit -m "data: $(date -u +%F) 自动更新"
             git push
           fi
+
+      # 用 GITHUB_TOKEN 推送不会触发 pages.yml，所以这里直接发布一次
+      - name: 发布静态站到 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传静态站
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: 部署 Pages
+        uses: actions/deploy-pages@v4
