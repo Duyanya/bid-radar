@@ -56,9 +56,17 @@ def main() -> int:
         shutil.copyfile(src, dst)
         snap_ok += 1
 
+    # 文档 PDF 一起发布，公网可直接下载
+    docs = OUT / "docs"
+    docs.mkdir(exist_ok=True)
+    for src_name, dst_name in (("使用说明.pdf", "usage.pdf"), ("需求文档.pdf", "requirements.pdf")):
+        src = BASE / src_name
+        if src.exists():
+            (docs / dst_name).write_bytes(src.read_bytes())
+
     # index.html：注入静态适配层
     html = (BASE / "index.html").read_text(encoding="utf-8")
-    shim = "<script>/* 静态托管适配：把 /api/* 映射到预生成的 JSON 与快照文件 */\n(function(){var o=window.fetch.bind(window);\nwindow.fetch=function(u,opt){u=String(u);\n if(u.indexOf('/api/bids')===0)  return o('./data/bids.json',opt);\n if(u.indexOf('/api/stats')===0) return o('./data/stats.json',opt);\n if(u.indexOf('/api/export')===0)return Promise.reject(new Error('static mode'));\n if(u.indexOf('/api/refresh')===0)return Promise.resolve(new Response(JSON.stringify({ok:true,static:true}),{status:200,headers:{'Content-Type':'application/json'}}));\n return o(u,opt);};})();\ndocument.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('rf');\nif(b){b.textContent='云端每日 09:00 自动更新';b.disabled=true;b.style.opacity=.6;\nb.title='公网站点为静态托管，数据由云端定时任务每天 09:00 抓取后自动发布';}});\n</script>"
+    shim = "<script>/* 静态托管适配：把 /api/* 映射到预生成的 JSON 与快照文件 */\n(function(){var o=window.fetch.bind(window);\nwindow.fetch=function(u,opt){u=String(u);\n if(u.indexOf('/api/bids')===0)  return o('./data/bids.json',opt);\n if(u.indexOf('/api/stats')===0) return o('./data/stats.json',opt);\n if(u.indexOf('/api/export')===0)return Promise.reject(new Error('static mode'));\n if(u.indexOf('/api/refresh')===0)return Promise.resolve(new Response(JSON.stringify({ok:true,static:true}),{status:200,headers:{'Content-Type':'application/json'}}));\n return o(u,opt);};})();\ndocument.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('rf');\nif(b){b.textContent='云端每日 09:00 自动更新';b.disabled=true;b.style.opacity=.6;\nb.title='公网站点为静态托管，数据由云端定时任务每天 09:00 抓取后自动发布';}});document.addEventListener('DOMContentLoaded',function(){var f=document.createElement('div');f.style.cssText='text-align:center;padding:20px 10px 34px;color:#718096;font-size:12.5px;line-height:2';f.innerHTML='文档下载：<a style=color:#2b6cb0 href=./docs/usage.pdf target=_blank>使用说明</a> · <a style=color:#2b6cb0 href=./docs/requirements.pdf target=_blank>需求文档</a> ｜ 数据每天 09:00 由云端自动抓取并发布<br>公网为静态快照，需要立刻抓取请用本机版 127.0.0.1:8848';document.body.appendChild(f);});\n</script>"
     if "</head>" not in html:
         print("!! index.html 缺少 </head>，无法注入")
         return 2
