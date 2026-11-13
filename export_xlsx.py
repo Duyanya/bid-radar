@@ -4,6 +4,8 @@
 数据源：data/bids.db（225 条，其中 89 条已公示中选/成交厂商）。
 输出：各省系统与建设厂商.xlsx（4 个工作表）
 """
+import re
+import os
 import sqlite3
 import datetime as dt
 
@@ -39,6 +41,25 @@ def load():
         r["省份"] = GROUP.get(rg, rg)
         r["系统"] = (r["build_content"] or "").strip() or (r["title"] or "").strip()
         r["厂商"] = (r["winner"] or "").strip()
+
+    # 结果公示原则上不披露成交价（运营商公示模板只给中选人），
+    # 用同项目采购公告的预算回填「项目预算」，并明确标注 ≠ 中标价。
+    def _key(t):
+        t = (t or "").split("_")[0]
+        t = re.sub(r"(中选结果公示|中标结果公示|结果公示|中选候选人公示|中标候选人公示|"
+                   r"招标公告|采购公告|询比公告|单一来源|采购需求公示|采购结果)+$", "", t)
+        return re.sub(r"[（）()\s、，,：:·\-—－]", "", t)[:30]
+
+    purch = {}
+    for r in rows:
+        if r["notice_type"] in ("采购公告", "招标公告", "询比公告") and r["amount_value"]:
+            purch.setdefault(_key(r["title"]), r)
+    for r in rows:
+        r["预算"], r["预算源"] = None, ""
+        if r["notice_type"] in ("结果公示", "中标候选人公示", "中选候选人公示", "采购结果"):
+            hit = purch.get(_key(r["title"]))
+            if hit:
+                r["预算"], r["预算源"] = hit["amount_value"], hit["title"]
     return rows
 
 
@@ -77,8 +98,8 @@ def main():
     ws = wb.active
     ws.title = "中标明细"
     cols = ["省份", "运营商", "系统/建设内容", "建设厂商", "公告类型",
-            "发布日期", "金额(元)", "金额(万元)", "项目标题", "公告链接"]
-    widths = [10, 10, 46, 30, 12, 12, 14, 12, 56, 30]
+            "发布日期", "中标金额(元)", "中标金额(万元)", "项目预算(元，非中标价)", "项目标题", "公告链接"]
+    widths = [10, 10, 46, 30, 12, 12, 14, 13, 20, 54, 28]
     head(ws, cols, widths)
     won = [r for r in rows if r["厂商"]]
     won.sort(key=lambda r: r["publish_date"] or "", reverse=True)          # 先按日期倒序
@@ -88,22 +109,22 @@ def main():
         ws.append([r["省份"], r["operator"], r["系统"], r["厂商"], r["notice_type"],
                    r["publish_date"], amt,
                    round(amt / 10000.0, 2) if isinstance(amt, (int, float)) and amt else None,
-                   r["title"], r["url"]])
-    body(ws, len(cols), money_cols=(7, 8), center_cols=(1, 2, 5, 6))
+                   r["预算"], r["title"], r["url"]])
+    body(ws, len(cols), money_cols=(7, 8, 9), center_cols=(1, 2, 5, 6))
 
     # ---------- Sheet2 全部在库项目 ----------
     ws9 = wb.create_sheet("全部在库项目")
     cols9 = ["省份", "运营商", "系统/建设内容", "建设厂商", "公告类型",
-             "发布日期", "金额(元)", "项目标题", "公告链接"]
-    widths9 = [10, 10, 44, 26, 12, 12, 13, 54, 28]
+             "发布日期", "金额(元)", "项目预算(元，非中标价)", "项目标题", "公告链接"]
+    widths9 = [10, 10, 44, 26, 12, 12, 13, 20, 52, 26]
     head(ws9, cols9, widths9)
     allrows = sorted(rows, key=lambda r: ((r["省份"] in ("集团总部", "集团直属")), r["省份"], r["publish_date"] or ""),
                      reverse=False)
     for r in allrows:
         amt = r["amount_value"]
         ws9.append([r["省份"], r["operator"], r["系统"], r["厂商"] or "未公示", r["notice_type"],
-                    r["publish_date"], amt, r["title"], r["url"]])
-    body(ws9, len(cols9), money_cols=(7,), center_cols=(1, 2, 5, 6))
+                    r["publish_date"], amt, r["预算"], r["title"], r["url"]])
+    body(ws9, len(cols9), money_cols=(7, 8), center_cols=(1, 2, 5, 6))
 
     # ---------- Sheet3 省份汇总 ----------
     ws2 = wb.create_sheet("省份汇总")
@@ -174,7 +195,10 @@ def main():
         "字段口径：",
         "  系统/建设内容：从公告正文提炼的建设内容名称（非标题照抄），不含预算、资格、工期等要素。",
         "  建设厂商：公告中的中选人 / 中标人 / 成交供应商 / 第一中选候选人；多个标包用「、」连接。",
-        "  金额：公告公开的预算或中选金额，单位元（空=未公示），万元列为换算值。",
+        "  中标金额：公告公开的中选/成交价，单位元（空=未公示）。运营商结果公示模板不披露价格，",
+        "    本次 89 条中选结果公示的正文里 0 条出现金额字段，这是来源本身不公开，不是抓漏。",
+        "  项目预算：同一项目采购公告公开的预算/最高限价，单位元，口径 ≠ 中标价，仅作规模参考。",
+        "    金额识别会跳过「单价 / 人天 / 每套售价」这类非项目总额的数字。",
         "  省份：省公司所在省份；集团总部与集团直属（研究院、智网创新中心）单列。",
         "",
         "未覆盖说明（如实标注，不编造）：",
@@ -187,7 +211,19 @@ def main():
         ws5[f"A{i}"].font = Font(name="微软雅黑", size=10, bold=(i == 3))
     ws5["A3"].font = Font(name="微软雅黑", size=10, bold=True)
 
-    wb.save(OUT)
+    try:
+        wb.save(OUT)
+    except PermissionError:
+        # Excel 正开着这个文件 -> 先写临时名再替换；仍被占用就另存一份
+        tmp = OUT + ".tmp.xlsx"
+        wb.save(tmp)
+        try:
+            os.replace(tmp, OUT)
+        except PermissionError:
+            alt = OUT.replace(".xlsx", "_新.xlsx")
+            os.replace(tmp, alt)
+            print(f"  ! 原文件被 Excel 占用，已另存为：{alt}")
+            return alt
     print(f"已生成 {OUT}")
     print(f"  中标明细 {len(won)} 行 / 省份汇总 {len(provinces)} 行 / 厂商 {len(vendor)} 家 / 待公示 {len(pend)} 行")
 

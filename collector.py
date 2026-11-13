@@ -32,10 +32,16 @@ def launch(p):
 
 # ---------------- 金额解析 ----------------
 AMT_PATTERNS = [
-    r"(?:预算|概算|采购金额|项目金额|合同估算价|最高限价|控制价|限价)[^\d]{0,10}([0-9][0-9,，.]*)\s*(万元|万|亿元|亿|元)",
+    # 优先「预算」，避免先撞上「最高限价」后面的单价
+    r"(?:本项目)?预算(?:金额|价|总额|为)?[^\d]{0,8}([0-9][0-9,，.]*)\s*(万元|万|亿元|亿|元)",
+    r"(?:概算|采购金额|项目金额|合同估算价|项目总投资)[^\d]{0,8}([0-9][0-9,，.]*)\s*(万元|万|亿元|亿|元)",
+    r"(?:最高限价|控制价|限价)(?:为|是|：|:)?(?:含税|不含税)?[^\d]{0,6}([0-9][0-9,，.]*)\s*(万元|万|亿元|亿|元)",
+    r"(?:中标|中选|成交|合同)(?:金额|总价|价款)[^\d]{0,6}([0-9][0-9,，.]*)\s*(万元|万|亿元|亿|元)",
     r"(?:金额|总价)[^\d]{0,6}([0-9][0-9,，.]*)\s*(万元|万|亿元|亿|元)",
     r"([0-9][0-9,，.]*)\s*(万元|亿元)",
 ]
+# 单价类上下文：命中即跳过该数字（1000元/人天 ≠ 项目金额）
+_AMT_UNIT_NOISE = re.compile(r"单价|人天|每套|每人|每月|每年|月租|台班|/\s*(人天|套|月|年|台|人)")
 UNIT = {"元": 1, "万": 1e4, "万元": 1e4, "亿": 1e8, "亿元": 1e8}
 
 
@@ -70,22 +76,32 @@ def parse_amount(text):
     """识别金额，返回纯数字（元为单位的整数），识别不到返回 None。
 
     只输出数字，不带单位/描述。前端按需显示。
+    先按「预算 → 概算 → 限价 → 成交价 → 通配万元」的顺序试；
+    紧邻「单价/人天/每套」的数字一律跳过（1000 元/人天 不是项目金额）。
     """
     if not text:
         return None
-    t = re.sub(r"\s+", " ", text)
-    for pat in AMT_PATTERNS:
-        for m in re.finditer(pat, t):
-            num, unit = m.group(1), m.group(2)
-            try:
-                v = float(num.replace(",", "").replace("，", ""))
-            except ValueError:
-                continue
-            v *= UNIT.get(unit, 1)
-            if v < 1000 or v > 1e11:   # 过滤明显误匹配
-                continue
-            return int(round(v))
-    return None
+
+    def _scan(t):
+        for pat in AMT_PATTERNS:
+            for m in re.finditer(pat, t):
+                num, unit = m.group(1), m.group(2)
+                try:
+                    v = float(num.replace(",", "").replace("，", ""))
+                except ValueError:
+                    continue
+                v *= UNIT.get(unit, 1)
+                if v < 1000 or v > 1e11:      # 过滤明显误匹配
+                    continue
+                # 上下文要看「数字」两侧，而不是整个匹配（匹配起点可能在"最高限价"上）
+                near = t[max(0, m.start(1) - 10): m.start(1)] + " " + t[m.end(1): m.end(1) + 8]
+                if _AMT_UNIT_NOISE.search(near):   # 单价/人天/每套 之类
+                    continue
+                return int(round(v))
+        return None
+
+    # 站点正文常把「预算」断行成「预 算」，先按无空白版本扫一遍
+    return _scan(re.sub(r"\s+", "", text)) or _scan(re.sub(r"\s+", " ", text))
 
 
 WINNER_PATTERNS = [
@@ -772,6 +788,12 @@ def _from_title(title):
         if s2 == s or len(s2) < 6:
             break
         s = s2
+    # 站点常把「项目名 + 包名」拼在一个标题里：…安全数据中台优化开发项目安全数据中台开发
+    # 后半段是同一系统的细分包名，取它，避免出现「…优化开发安全数据中台开发」这类复读
+    if "项目" in s:
+        parts = [x for x in s.split("项目") if len(x) >= 6]
+        if len(parts) >= 2 and parts[-1][:6] in parts[0]:
+            s = parts[-1]
     if len(s) < 4:
         return None
     return s[:60]
