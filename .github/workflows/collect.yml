@@ -83,7 +83,14 @@ jobs:
             echo "无变化，跳过提交"
           else
             git commit -m "data: $(date -u +%F) 自动更新"
-            git push
+            # 远端可能被手动/接口提交过，先 rebase 再推，最多重试 3 次
+            ok=0
+            for i in 1 2 3; do
+              git pull --rebase --autostash -X theirs -q origin master || git rebase --abort || true
+              if git push -q origin HEAD:master; then ok=1; break; fi
+              sleep 5
+            done
+            test "$ok" = "1" || { echo "推送失败"; exit 1; }
           fi
 
       # 用 GITHUB_TOKEN 推送不会触发 pages.yml，所以这里直接发布一次
