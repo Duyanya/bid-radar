@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -43,6 +44,30 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+          name: pages-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 等待发布文件可见
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: pages-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, time, urllib.request
+          url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}/artifacts"
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'}
+          for attempt in range(30):
+              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
+                  data = json.load(response)
+              found = [a for a in data.get('artifacts', []) if a['name'] == os.environ['ARTIFACT_NAME'] and not a['expired']]
+              if len(found) == 1:
+                  print('发布文件已就绪')
+                  break
+              time.sleep(3)
+          else:
+              raise SystemExit('发布文件尚不可见，保留当前公网站点')
+          PYCODE
 
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: pages-${{ github.run_id }}-${{ github.run_attempt }}
