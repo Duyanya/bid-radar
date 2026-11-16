@@ -1,0 +1,63 @@
+import unittest
+from classifier import classify
+
+
+class ScopeTests(unittest.TestCase):
+    def test_positive_network_software(self):
+        titles = [
+            '浙江移动网络指挥调度系统研发采购项目',
+            '中国移动浙江公司2026年网络运营应用研发项目装维服务调度系统采购项目',
+            '中国联通黑龙江接入网综合网管系统适配研发项目',
+            '河北移动无线运维工作台研发采购项目',
+            '辽宁移动传输运维工作台研发项目',
+            '重庆移动网络优化管理系统功能研发采购项目',
+            '云南移动家宽装维智能体方案研究项目',
+            '河北移动数字化网络运营沙盘研发项目',
+            '中国移动北京公司网管系统开发及维保框架采购项目',
+            '中国移动江西公司OSS域资源及动环支撑研发项目',
+            '中国电信新疆长途传输局光网智能运维管理平台研发项目',
+            '中国联通智能网络中台网络资源中心资源数据治理软件研发项目',
+            '浙江移动IP网络设备配置核查助手软件研发项目',
+        ]
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertTrue(classify(title)[0], classify(title))
+
+    def test_excluded_or_unproven(self):
+        titles = [
+            '山东移动2026-2028年室分工程施工采购项目_中标结果公示',
+            '浙江移动国铁电话专网建设施工服务采购项目',
+            '广西移动有线接入网迁改整治服务采购项目',
+            '海南移动一体化大功率基站采购项目',
+            '新疆移动传输网防腐油木杆采购项目',
+            '中国移动网络云资源池工程硬件集成服务采购项目',
+            '浙江移动核心网协维服务采购项目',
+            '广西移动网管系统通用支撑服务采购项目',
+            '江苏移动核心网设备采购项目',
+            '福建移动财务运营管理平台研发采购项目',
+            '甘肃移动BOSS&CRM系统研发采购项目',
+            '河南联通云网综合安全管理平台研发项目',
+            '广西移动僵木蠕监控系统软件开发采购项目',
+            '山东移动垃圾短信系统开发采购项目',
+            '安徽移动无人车智能调度软件开发采购项目',
+            '北京移动教育AI应用服务平台研发项目',
+            '江西移动商客沙盘研发采购项目',
+            '湖南移动AI赋能生产研发采购项目',
+            '湖南移动数字孪生可视化平台研发项目',
+            '浙江移动数据中台研发项目',
+            '浙江移动BOSS系统研发项目',
+            '安徽移动PBOSS非资源及投诉预处理系统软件开发项目',
+            '中国电信南京分公司云网智能调度平台研发项目',
+        ]
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertFalse(classify(title)[0], classify(title))
+
+    def test_body_boilerplate_cannot_establish_domain(self):
+        self.assertFalse(classify('湖南移动通用平台研发项目', '资格要求：具备5G网管软件开发业绩；代理机构：网络科技公司')[0])
+        self.assertTrue(classify('湖南移动数字孪生平台研发项目', '采购内容：建设网络资源数字孪生平台，实现网络资源管理。')[0])
+        self.assertFalse(classify('山东移动室分工程施工采购项目', '采购内容：建设网络监控软件平台。')[0])
+
+
+if __name__ == '__main__':
+    unittest.main()

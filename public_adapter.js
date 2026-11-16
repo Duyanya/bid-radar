@@ -13,6 +13,7 @@
       from = d.toISOString().slice(0,10);
     }
     return rows.filter(r =>
+      (params.get("scope") === "all" || r.in_scope !== false) &&
       (!kw || [r.title, r.content, r.build_content, r.region, r.winner].some(x => String(x || '').toLowerCase().includes(kw))) &&
       (!op || op === 'all' || r.operator === op) &&
       (!status || status === 'all' || r.status === status) &&
@@ -30,7 +31,13 @@
       const rows = filterRows(data.rows || [], url.searchParams);
       return new Response(JSON.stringify({ok:true, rows, count:rows.length}), {headers:{'Content-Type':'application/json'}});
     }
-    if (url.pathname === '/api/stats') return originalFetch('./data/stats.json', {cache:'no-cache'});
+    if (url.pathname === '/api/stats') {
+      const response = await originalFetch('./data/stats.json', {cache:'no-cache'});
+      if (!response.ok) throw new Error('统计数据暂时不可用');
+      const all = await response.json();
+      const stats = url.searchParams.get('scope') === 'all' ? all : {...all, ...all.network};
+      return new Response(JSON.stringify(stats), {headers:{'Content-Type':'application/json'}});
+    }
     if (url.pathname === '/api/refresh') throw new Error('公网版不提供实时采集，请刷新已发布数据');
     return originalFetch(input, options);
   };

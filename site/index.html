@@ -126,7 +126,12 @@
   <div class="card"><div class="k">中国联通</div><div class="v" id="s-cu">—</div></div>
 </div>
 
+<div style="margin:12px 0;color:#8b98a5;font-size:13px;line-height:1.7">默认关注网络运营软件、平台与研发项目；范围外及待核验的历史记录可在“全部留存”中查询，官网下架不删除记录或快照。<br>纳入：监控故障、资源管理、装维调度、开通编排、网优分析、网络智能化。排除默认展示：施工、硬件、纯维保、安全及经营管理项目。</div>
 <div class="bar">
+  <select id="scope" aria-label="项目范围">
+    <option value="network">网络域项目</option>
+    <option value="all">全部留存（含范围外）</option>
+  </select>
   <input type="text" id="kw" placeholder="搜索名称 / 省份 / 内容 / 中选厂商…">
   <select id="op">
     <option value="all">全部运营商</option>
@@ -252,7 +257,7 @@ function row(input){
          title="本地存档，官网下架后仍可查看">快照</a>` : '';
   return `<tr>
     <td><span class="t">${r.title||''}</span>
-        <div class="muted" style="font-size:11px;margin-top:3px">${r.region||''} · ${r.relevance||''} · 首次记录 ${(r.first_seen||'').slice(0,10)}</div></td>
+        <div class="muted" style="font-size:11px;margin-top:3px">${r.region||''} · ${r.in_scope === false ? escapeHTML(r.scope_level || '范围外') + '留存' : (r.relevance||'')} · 首次记录 ${(r.first_seen||'').slice(0,10)}</div>${r.in_scope === false ? '<div class="muted" style="font-size:11px;margin-top:3px">' + escapeHTML(r.scope_reason) + '</div>' : ''}</td>
     <td style="max-width:300px"><span style="font-size:12.5px;line-height:1.5">${r.build_content || '<span class="muted">—</span>'}</span></td>
     <td><span class="muted">${r.notice_type||'—'}</span></td>
     <td class="dl">${(r.publish_date||'—')}</td>
@@ -443,7 +448,7 @@ function syncFunnel(){
 }
 
 function resetFilters(){
-  $('kw').value=''; $('op').value='all'; $('st').value='all'; $('dy').value='';
+  $('scope').value='network'; $('kw').value=''; $('op').value='all'; $('st').value='all'; $('dy').value='';
   Object.keys(CF).forEach(k=>delete CF[k]);
   SORT.k='publish_date'; SORT.dir=-1; syncSortUI(); load();
 }
@@ -466,7 +471,7 @@ function renderView(){
   const sk = {publish_date:'发布日期', deadline:'截止日期', amount_value:'金额', title:'名称'}[SORT.k] || '发布日期';
   const n = cfCount();
   $('liveTxt').textContent = `显示 ${rows.length} / ${RAW.length} 条 · ${sk}${SORT.dir === 1 ? '升序' : '降序'}`
-    + (n ? ` · 列筛选 ${n} 项` : '');
+    + (n ? ` · 列筛选 ${n} 项` : '') + ($('scope').value === 'all' ? ' · 全部留存' : ' · 网络域项目');
   syncFunnel();
 }
 
@@ -484,7 +489,7 @@ function exportCSV(){
   VIEW.forEach(r => lines.push([
     r.title, r.build_content, r.notice_type, (r.publish_date||'').slice(0,10),
     (r.deadline||'').slice(0,10), (r.amount_value == null ? '' : r.amount_value),
-    r.winner, r.operator, r.region, r.relevance,
+    r.winner, r.operator, r.region, (r.in_scope === false ? (r.scope_level + "留存") : r.relevance),
     r.status === 'active' ? '在架' : '已下架', (r.first_seen||'').slice(0,10),
     r.url, r.snapshot_path
   ].map(csvCell).join(',')));
@@ -546,7 +551,7 @@ async function load(){
   const sequence = ++loadSequence;
   const q = new URLSearchParams({
     kw: $('kw').value.trim(), operator: $('op').value,
-    status: $('st').value, days: $('dy').value, limit: 2000
+    status: $('st').value, days: $('dy').value, scope: $('scope').value, limit: 2000
   });
   try{
     const res = await fetch('/api/bids?' + q);
@@ -563,8 +568,10 @@ async function load(){
 }
 
 async function loadStats(){
+  const sequence = loadSequence;
   try{
-    const j = await (await fetch('/api/stats')).json();
+    const j = await (await fetch('/api/stats?scope=' + encodeURIComponent($('scope').value))).json();
+    if (sequence !== loadSequence) return;
     $('s-total').textContent = fmt(j.total);
     $('s-active').textContent = fmt(j.active);
     $('s-arch').textContent = fmt(j.archived);
@@ -597,7 +604,7 @@ async function refresh(){
 }
 
 $('kw').addEventListener('keydown', e => { if(e.key === 'Enter') load(); });
-['op','st','dy'].forEach(id => $(id).addEventListener('change', load));
+['op','st','dy','scope'].forEach(id => $(id).addEventListener('change', load));
 
 // 顶部排序标签：点已选中的再点一次切换方向
 document.querySelectorAll('.chip[data-k]').forEach(c => {

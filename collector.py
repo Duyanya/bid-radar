@@ -960,9 +960,8 @@ def fetch_cmcc(pg, pages=3, page_size=20, notice_type="PROCUREMENT"):
 # ---- 关键词补扫（实测 name 参数就是关键词过滤）----
 # 只翻最新 N 页会漏掉窗口外的公告：河北移动数字化网络运营沙盘（11-11 16:41 发布）
 # 当时就没进最新 300 条。用 name=关键词 精确捞回来。
-CMCC_SWEEP_KW = ["沙盘", "数字化网络运营", "数字孪生", "自智网络", "网络运营", "算力网络",
-                 "承载网", "核心网", "接入网", "传输网", "网管", "OSS", "编排", "云网",
-                 "专网", "网优", "数据中台", "智能体", "网络中台", "网络大脑"]
+from network_scope import SEARCH_TERMS, needs_detail
+CMCC_SWEEP_KW = SEARCH_TERMS
 
 
 def _cmcc_row(it, notice_type):
@@ -1443,7 +1442,7 @@ def run(which="all", pages=3, details=0):
                     pre = []
                     for r in cu_rows:
                         ok, lv, why = classifier.classify(r.get("title", ""), "")
-                        if ok:
+                        if needs_detail(r.get("title", "")):
                             pre.append(r)
                     print(f"[CU-DETAIL] 预筛 {len(pre)}/{len(cu_rows)} 条")
                     done = 0
@@ -1494,7 +1493,7 @@ def run(which="all", pages=3, details=0):
                     if r["id"].startswith("cu_"):
                         continue  # 联通已单独处理
                     ok, lv, why = classifier.classify(r.get("title", ""))
-                    if ok:
+                    if needs_detail(r.get("title", "")):
                         r["relevance"], r["relevance_reason"] = lv, why
                         pre.append(r)
                 print(f"[DETAIL] 预筛后 {len(pre)}/{len(all_rows)} 条，抽取 {min(details, len(pre))}")
