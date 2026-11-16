@@ -11,6 +11,7 @@ SEARCH_TERMS = [
     '网络资源', '装维', '业务编排', '网络运营', '网络质量', '自智网络',
     '网络孪生', '网络沙盘', '核心网工作台', '传输网工作台', 'IP网工作台',
     '云网大脑', '算网调度', '网络中台', '网络智能体', '网优平台',
+    '监控大屏', '监控可视化', '大屏可视化',
 ]
 NETWORK = (
     '核心网', '承载网', '传输网', '接入网', '无线网', '无线运营', '无线孪生',
@@ -44,7 +45,8 @@ OUTSIDE = {
                     '施工项目', '迁改整治', '专网迁移', '机房建设', '机房改造',
                     '土建', '装修', '综合布线', '勘察设计', '监理', 'EPC总承包'),
     '硬件及物资供货': ('硬件集成', '分布式块存储', '木杆', '光模块', '板卡',
-                    '一体化大功率基站', '基站车', '通信车', '蓄电池', '机柜'),
+                    '一体化大功率基站', '基站车', '通信车', '蓄电池', '机柜',
+                    '显示屏采购', '拼接屏', '大屏设备', 'LED显示'),
     '硬件技术研发': ('射频拓展', '通信舱'),
     '通信线路及连接服务': ('信令转接服务', '专线延伸服务', '链路）服务',
                         '链路)服务', '云网络连接服务'),
@@ -91,6 +93,9 @@ def classify_network(title, content=''):
     soft = hits(title, SOFTWARE)
     dev = hits(title, DEVELOPMENT)
     change = hits(title, SOFTWARE_CHANGE)
+    visualization = hits(title, ('监控大屏', '大屏监控', '监控可视化'))
+    if visualization and hits(title, ('可视化', '软件')) and hits(title, ('开发', '研发', '定制')):
+        return True, '强相关', '监控可视化软件开发：' + '、'.join(visualization)
     # Maintenance of a platform is distinct from development of that platform.
     maintenance = hits(title, MAINTENANCE)
     if maintenance and not (soft and change):

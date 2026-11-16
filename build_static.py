@@ -48,6 +48,9 @@ def main() -> int:
         "cu": sum(row.get("operator") == "中国联通" for row in selected),
     }
     stats["scope_version"] = RULE_VERSION
+    supplement = BASE / 'data' / 'last_supplement.json'
+    if supplement.exists():
+        stats['last_supplement'] = json.loads(supplement.read_text(encoding='utf-8'))
     try:
         pub = (BASE / "data" / "public_url.txt").read_text(encoding="utf-8").strip()
     except OSError:

@@ -18,6 +18,8 @@ class ScopeTests(unittest.TestCase):
             '中国电信新疆长途传输局光网智能运维管理平台研发项目',
             '中国联通智能网络中台网络资源中心资源数据治理软件研发项目',
             '浙江移动IP网络设备配置核查助手软件研发项目',
+            '中国移动广西公司2026年监控大屏可视化开发工程采购项目_询比公告',
+            '广西移动大屏监控可视化软件定制开发采购项目',
         ]
         for title in titles:
             with self.subTest(title=title):
@@ -48,6 +50,9 @@ class ScopeTests(unittest.TestCase):
             '浙江移动BOSS系统研发项目',
             '安徽移动PBOSS非资源及投诉预处理系统软件开发项目',
             '中国电信南京分公司云网智能调度平台研发项目',
+            '广西移动监控中心LED显示屏采购项目',
+            '广西移动监控大屏可视化设备采购项目',
+            '广西移动监控大屏可视化软件维保服务采购项目',
         ]
         for title in titles:
             with self.subTest(title=title):

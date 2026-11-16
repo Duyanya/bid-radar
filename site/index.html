@@ -187,7 +187,7 @@
 <div class="foot">
   <span>📌 历史记录与快照保留；在架状态不代表仍可投标，请核对原公告</span>
   <span>🌐 公网地址：<a id="pubUrl" href="#" target="_blank" rel="noopener">—</a></span>
-  <span>🕐 上次采集：<span id="lastRun">—</span></span>
+  <span>🕐 上次批量采集：<span id="lastRun">—</span></span><span id="lastSupplement" hidden></span>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -581,6 +581,12 @@ async function loadStats(){
     $('s-ct').textContent = fmt(j.ct);
     $('s-cu').textContent = fmt(j.cu);
     $('lastRun').textContent = j.last_run || '尚未采集';
+    const supplement = $('lastSupplement');
+    supplement.hidden = !j.last_supplement;
+    if (j.last_supplement) {
+      supplement.textContent = '最近定向补录：' + j.last_supplement.time;
+      supplement.title = j.last_supplement.title;
+    }
     if (j.public_url) {
       var pu = $('pubUrl');
       pu.textContent = j.public_url.replace(/^https:\/\//, '');
