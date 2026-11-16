@@ -103,27 +103,16 @@
   #cfPop .b1{background:#2563eb}
   #cfPop .b2{background:#1f2937;color:#c7d2e0}
 </style>
-<script>/* 静态托管适配：把 /api/* 映射到预生成的 JSON 与快照文件 */
-(function(){var o=window.fetch.bind(window);
-window.fetch=function(u,opt){u=String(u);
- if(u.indexOf('/api/bids')===0)  return o('./data/bids.json',opt);
- if(u.indexOf('/api/stats')===0) return o('./data/stats.json',opt);
- if(u.indexOf('/api/export')===0)return Promise.reject(new Error('static mode'));
- if(u.indexOf('/api/refresh')===0)return Promise.resolve(new Response(JSON.stringify({ok:true,static:true}),{status:200,headers:{'Content-Type':'application/json'}}));
- return o(u,opt);};})();
-document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('rf');
-if(b){b.textContent='云端每日 09:00 自动更新';b.disabled=true;b.style.opacity=.6;
-b.title='公网站点为静态托管，数据由云端定时任务每天 09:00 抓取后自动发布';}});document.addEventListener('DOMContentLoaded',function(){var f=document.createElement('div');f.style.cssText='text-align:center;padding:20px 10px 34px;color:#718096;font-size:12.5px;line-height:2';f.innerHTML='文档下载：<a style=color:#2b6cb0 href=./docs/usage.pdf target=_blank>使用说明</a> · <a style=color:#2b6cb0 href=./docs/requirements.pdf target=_blank>需求文档</a> ｜ 数据每天 09:00 由云端自动抓取并发布<br>公网为静态快照，需要立刻抓取请用本机版 127.0.0.1:8848';document.body.appendChild(f);});
-</script></head>
+<script src="./public_adapter.js"></script></head>
 <body>
 
 <div class="head">
   <div class="logo">📡</div>
   <div>
     <h1>运营商投标雷达</h1>
-    <div class="sub">Bid Radar · 运营商招标信息自动采集与永久存档</div>
+    <div class="sub">Bid Radar · 运营商招标信息聚合与历史存档</div>
   </div>
-  <div class="live"><span class="dot"></span><span id="liveTxt">本地数据库已连接</span></div>
+  <div class="live"><span class="dot"></span><span id="liveTxt">正在加载已发布数据</span></div>
 </div>
 
 <div class="cards">
@@ -165,6 +154,7 @@ b.title='公网站点为静态托管，数据由云端定时任务每天 09:00 �
     <button class="chip" data-k="title">名称<span class="a">↑</span></button>
   </span>
   <button class="btn" onclick="load()">查询</button>
+  <button class="btn" onclick="resetFilters()">重置条件</button>
   <button class="btn" id="cfClear" style="display:none" onclick="clearColFilters()">清空列筛选</button>
   <div class="spacer"></div>
   <button class="btn" onclick="exportCSV()">导出 CSV</button>
@@ -190,7 +180,7 @@ b.title='公网站点为静态托管，数据由云端定时任务每天 09:00 �
 </div>
 
 <div class="foot">
-  <span>📌 数据持久化：一旦入库即永久保存，官网下线不影响本地记录</span>
+  <span>📌 历史记录与快照保留；在架状态不代表仍可投标，请核对原公告</span>
   <span>🌐 公网地址：<a id="pubUrl" href="#" target="_blank" rel="noopener">—</a></span>
   <span>🕐 上次采集：<span id="lastRun">—</span></span>
 </div>
@@ -207,10 +197,10 @@ function toast(msg){
 }
 
 function daysLeft(dl){
-  if(!dl) return null;
-  const d = new Date(dl.replace(/-/g,'/'));
-  if(isNaN(d)) return null;
-  return Math.ceil((d - new Date()) / 86400000);
+  if (!dl) return null;
+  const d = Date.parse(String(dl).slice(0,10) + 'T00:00:00+08:00');
+  const today = Date.parse(today10() + 'T00:00:00+08:00');
+  return Number.isFinite(d) ? Math.round((d-today)/86400000) : null;
 }
 
 function dlCell(dl){
@@ -222,8 +212,8 @@ function dlCell(dl){
     else if(n <= 2) cls = 'hot';
     else if(n <= 7) cls = 'soon';
   }
-  const tip = n === null ? '' : (n < 0 ? `已截止${-n}天` : `剩${n}天`);
-  return `<span class="dl ${cls}" title="${tip}">${dl.slice(0,10)}</span>`
+  const tip = n === null ? '' : (n < 0 ? `已截止${-n}天` : (n === 0 ? '今日截止' : `剩${n}天`));
+  return `<span class="dl ${cls}" title="${tip}">${escapeHTML(String(dl).slice(0,10))}</span>`
        + (tip ? `<div class="muted" style="font-size:11px">${tip}</div>` : '');
 }
 
@@ -240,7 +230,14 @@ function fmtAmt(v){
   return n.toLocaleString('zh-CN');
 }
 
-function row(r){
+function safeUrl(value){
+  try { const u=new URL(value); return ['https:','http:'].includes(u.protocol) ? u.href : ''; } catch { return ''; }
+}
+function escapeHTML(value){return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function row(input){
+  const r={...input};
+  for(const key of ['title','region','relevance','build_content','notice_type','winner','operator','publish_date','first_seen']) r[key]=escapeHTML(r[key]);
+  r.url=escapeHTML(safeUrl(r.url));
   const st = r.status === 'active'
     ? '<span class="tag live">在架</span>'
     : '<span class="tag gone">已下架</span>';
@@ -261,7 +258,7 @@ function row(r){
     <td class="dl">${(r.publish_date||'—')}</td>
     <td>${dlCell(r.deadline)}</td>
     <td>${amt}</td>
-    <td>${r.winner ? `<b style="color:#a78bfa">${r.winner}</b>` : '<span class="muted">未公示</span>'}</td>
+    <td>${r.winner ? `<b style="color:#a78bfa">${r.winner}</b>` : '<span class="muted">未获取</span>'}</td>
     <td>${opTag(r.operator)}</td>
     <td>${src}${snap}</td>
     <td>${st}</td>
@@ -280,8 +277,9 @@ const VAL = {
 
 /* ================= 列筛选：10 列表头逐列筛选 ================= */
 let RAW = [], VIEW = [];
+let loadSequence = 0;
 const CF = {};                       // 列筛选条件，key = 列 key
-const today10 = () => new Date().toISOString().slice(0,10);
+const today10 = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Shanghai'}).format(new Date());
 
 function sourceKind(r){
   const a = [];
@@ -297,7 +295,7 @@ const COLS = [
   {k:'publish_date',  t:'date', label:'发布日期',    get:r => (r.publish_date||'').slice(0,10)},
   {k:'deadline',      t:'date', label:'截止日期',    get:r => (r.deadline||'').slice(0,10)},
   {k:'amount_value',  t:'amt',  label:'招标金额',    get:r => r.amount_value},
-  {k:'winner',        t:'text', label:'中选厂商',    get:r => r.winner || '未公示'},
+  {k:'winner',        t:'text', label:'中选厂商',    get:r => r.winner || '未获取'},
   {k:'operator',      t:'enum', label:'运营商',      get:r => r.operator || '未标注'},
   {k:'source',        t:'enum', label:'来源',        get:r => sourceKind(r)},
   {k:'status',        t:'enum', label:'状态',        get:r => (r.status === 'active' ? '在架' : '已下架')}
@@ -367,13 +365,13 @@ function openPop(th, col){
   const v = CF[col.k];
   let h = `<h4>筛选 · ${col.label}</h4>`;
   if (col.t === 'text'){
-    h += `<input id="cfTxt" placeholder="包含文字，留空＝不限" value="${String(v||'').replace(/"/g,'&quot;')}">`;
+    h += `<input id="cfTxt" placeholder="包含文字，留空＝不限" value="${escapeHTML(v||'')}">`;
   } else if (col.t === 'enum'){
     const sel = Array.isArray(v) ? v : [];
     h += `<div style="max-height:210px;overflow:auto">`;
     colValues(col).forEach(([name, n]) => {
-      h += `<label class="ck"><input type="checkbox" value="${name.replace(/"/g,'&quot;')}"${sel.includes(name)?' checked':''}>
-            <span>${name}</span><span style="margin-left:auto;color:#5c6b82">${n}</span></label>`;
+      h += `<label class="ck"><input type="checkbox" value="${escapeHTML(name)}"${sel.includes(name)?' checked':''}>
+            <span>${escapeHTML(name)}</span><span style="margin-left:auto;color:#5c6b82">${n}</span></label>`;
     });
     h += `</div><div style="margin-top:6px;font-size:11.5px;color:#5c6b82">可多选；一个不勾＝不限</div>`;
   } else if (col.t === 'date'){
@@ -444,6 +442,12 @@ function syncFunnel(){
   }
 }
 
+function resetFilters(){
+  $('kw').value=''; $('op').value='all'; $('st').value='all'; $('dy').value='';
+  Object.keys(CF).forEach(k=>delete CF[k]);
+  SORT.k='publish_date'; SORT.dir=-1; syncSortUI(); load();
+}
+
 function clearColFilters(){
   Object.keys(CF).forEach(k => delete CF[k]);
   renderView();
@@ -455,7 +459,7 @@ function renderView(){
   VIEW = rows;
   const tb = $('tb');
   if (!rows.length){
-    tb.innerHTML = '<tr><td colspan="10" class="empty">没有符合条件的记录 — 放宽表头筛选条件试试</td></tr>';
+    tb.innerHTML = '<tr><td colspan="10" class="empty">没有符合条件的记录 — 请放宽查询条件或点击“重置条件”</td></tr>';
   } else {
     tb.innerHTML = rows.map(row).join('');
   }
@@ -468,7 +472,8 @@ function renderView(){
 
 /* ---- 导出：与当前筛选+排序完全一致 ---- */
 function csvCell(v){
-  const s = (v == null ? '' : String(v));
+  let s = (v == null ? '' : String(v));
+  if(typeof v === 'string' && /^[\s]*[=+@-]/.test(s)) s="'"+s;
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 function exportCSV(){
@@ -496,13 +501,13 @@ function exportCSV(){
 function applySort(rows){
   const get = VAL[SORT.k] || VAL.publish_date;
   const arr = rows.slice();
-  const today = new Date().toISOString().slice(0,10);
+  const today = today10();
   arr.sort((a, b) => {
     const va = get(a), vb = get(b);
     if (SORT.k === 'deadline'){
       // 无截止日期（结果公示类）→ 沉底；已截止 → 排在未截止之后，避免挡住还能投的
-      const ga = (!va) ? 2 : (va < today ? 1 : 0);
-      const gb = (!vb) ? 2 : (vb < today ? 1 : 0);
+      const ga = (!va) ? 2 : (String(va).slice(0,10) < today ? 1 : 0);
+      const gb = (!vb) ? 2 : (String(vb).slice(0,10) < today ? 1 : 0);
       if (ga !== gb) return ga - gb;
       if (!va && !vb) return String(b.id||'').localeCompare(String(a.id||''));
     }
@@ -538,17 +543,21 @@ function setSort(k, dir){
 }
 
 async function load(){
+  const sequence = ++loadSequence;
   const q = new URLSearchParams({
     kw: $('kw').value.trim(), operator: $('op').value,
     status: $('st').value, days: $('dy').value, limit: 2000
   });
   try{
     const res = await fetch('/api/bids?' + q);
+    if(!res.ok) throw new Error('数据加载失败');
     const j = await res.json();
+    if(sequence !== loadSequence) return;
     RAW = j.rows || [];
     renderView();
   }catch(e){
-    $('tb').innerHTML = '<tr><td colspan="10" class="empty">接口未连接，请先启动 app.py</td></tr>';
+    if(sequence !== loadSequence) return;
+    RAW=[]; VIEW=[]; $('liveTxt').textContent='数据加载失败'; $('tb').innerHTML = '<tr><td colspan="10" class="empty">数据加载失败，请检查网络后重试，或稍后联系管理员</td></tr>';
   }
   loadStats();
 }
