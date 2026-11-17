@@ -43,6 +43,11 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: xvfb-run -a python collector.py all 15 20
 
+      - name: 独立补抓结果公告的中选厂商
+        env:
+          PYTHONIOENCODING: utf-8
+        run: xvfb-run -a python winner_backfill.py --limit 60
+
       - name: 并回 WAL 并体检
         env:
           PYTHONIOENCODING: utf-8

@@ -146,49 +146,36 @@ _GOOD_TAIL = ("公司", "集团", "研究院", "设计院", "厂", "中心", "�
 
 
 def parse_winner(text):
-    """抽取中选/成交厂商。
-
-    支持「包1的中选人：\\n深圳市名通科技股份有限公司」这种标点后换行的写法，
-    多个标包的结果合并为「A、B」。排除「中选人数量1个」「详见附件」这类噪声。
-    """
+    """仅在中选/成交标签后读取机构名称，保留全部标包并修复 PDF 断行。"""
     if not text:
         return None
-    # 归一化：标点后的硬换行拼回同一行（PDF 常见断行）
-    flat = re.sub(r"(?<=[：:，,。；;、])\s*\n\s*", "", text)
-    flat = re.sub(r"(?<=[\u4e00-\u9fa5])\s*\n\s*(?=[\u4e00-\u9fa5])", "", flat)
-    flat = re.sub(r"\s+", " ", flat)
-
-    BAD = ("数量", "份额", "详见", "见附件", "另行", "公示", "序号")
+    flat = re.sub(r"(?<=[一-龥（）()])\s*\n\s*(?=[一-龥（）()])", "", text)
+    keys = sorted(set(WINNER_KEYS + ("中选候选人", "中标候选人", "成交候选人")), key=len, reverse=True)
+    label = r"(?:" + "|".join(map(re.escape, keys)) + r")(?:名称)?\s*(?:(?:如下|为)\s*[：:]?|[：:])\s*"
+    chars = r"[一-龥A-Za-z0-9（）()·&－—\-]"
+    company = re.compile(chars + r"{2,65}?(?:股份有限公司|有限责任公司|有限公司|公司)(?:[一-龥]{0,12}分公司)?")
+    institution = re.compile(chars + r"{2,65}?(?:研究院|设计院|研究所|大学|学院|事务所|中心|集团|厂)(?=$|[\s，。；;、]|采购人|招标人|采购代理|招标代理)")
     found = []
-    for key in WINNER_KEYS:
-        pat = re.escape(key) + r"\s*(?:名称)?\s*[：:为]?\s*([^，。；;、\s]{4,60})"
-        for m in re.finditer(pat, flat):
-            w = m.group(1).strip(" ：:，,。.．、0123456789（）()")
-            w = re.sub(r"^[（(]?\d+[)）]?[.、．]?\s*", "", w)
-            w = _cut_name(w)   # 先剁掉「…采购人/招标代理机构…」这类粘连的后半截
-            if not (4 <= len(w) <= 60):
-                continue
-            if any(b in w[:4] for b in BAD):
-                continue
-            # 必须是机构名，避免把「1个」「无」当厂商
-            if not any(t in w for t in _GOOD_TAIL):
-                continue
-            if w and w not in found:
-                found.append(w)
-    # 「包9-…中选人：A … 包1-…中选人：B」：按标包切段，各段各取一家
-    for seg in re.split(r"(?=(?:第?[一二三四五六七八九十\d]{1,2}\s*包|标包\s*\d+|采购包\s*\d+)\s*[-－—])", flat):
-        m = re.search(r"(?:中选人|中标人|成交供应商|成交人|第一名)\s*(?:名称)?\s*[：:为]?\s*"
-                      r"(?:\d+\s*[.、．]\s*)?([一-龥A-Za-z（）()·]{4,40}?"
-                      r"(?:股份有限公司|有限责任公司|有限公司|集团|研究院|设计院|研究所|大学|中心))", seg)
-        if not m:
+    for match in re.finditer(label, flat):
+        # 保持原有口径：候选公示取第一候选人，不能把后续排名当作中选结果。
+        if re.search(r"第[二三四五六七八九十2-9]$", flat[:match.start()]):
             continue
-        w = _cut_name(m.group(1).strip())
-        if w and w not in found and len(w) >= 4:
-            found.append(w)
-
-    if not found:
-        return None
-    return "、".join(found[:3])
+        tail = flat[match.end():]
+        # 只读取紧随结果标签的名单；采购人、代理机构等后续内容不能进入名单。
+        for _ in range(100):
+            tail = re.sub(r"^[\s，,、；;]*(?:[（(]?\d+[）).．、]\s*)?", "", tail)
+            if re.match(r"(?:采购人|招标人|采购代理|招标代理|代理机构|候选人|公示|项目)", tail):
+                break
+            m = company.match(tail) or institution.match(tail)
+            if not m:
+                break
+            name = m.group()
+            if name not in found:
+                found.append(name)
+            tail = tail[m.end():]
+            if not re.match(r"(?:\s+|[，,、；;]|[（(]?\d+[）).．、])", tail):
+                break
+    return "、".join(found) if found else None
 
 
 BUILD_KEYS = [

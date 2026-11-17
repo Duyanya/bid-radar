@@ -1,70 +1,104 @@
-# -*- coding: utf-8 -*-
-"""补中选人：结果类公告按 SELECTION_RESULTS 重抓详情，解析中选厂商并修 URL。"""
-import re, sqlite3, sys, time, random
-import collector, db
-from playwright.sync_api import sync_playwright
+"""独立补齐结果公告的中选厂商；保留历史状态、正文和已有快照。"""
+import argparse
+import json
+import re
+import time
+from pathlib import Path
+import collector
+import db
 
-conn = sqlite3.connect("data/bids.db")
-conn.row_factory = sqlite3.Row
 
-rows = [r for r in conn.execute(
-    "select id,uuid,title,winner,content,build_content,snapshot_path,url,notice_type "
-    "from bids where operator='中国移动' order by publish_date desc")
-    if re.search(r"结果公示|中选|中标|成交|候选人", r["title"])]
-need = [r for r in rows if not (r["winner"] or "").strip()]
-print("结果类 %d 条，缺中选人 %d 条" % (len(rows), len(need)))
-limit = int(sys.argv[1]) if len(sys.argv) > 1 else 45
-need = need[:limit]
+def pending_rows():
+    with db.conn() as c:
+        rows = [dict(r) for r in c.execute(
+            "SELECT * FROM bids WHERE winner IS NULL OR trim(winner)='' "
+            "ORDER BY publish_date DESC, first_seen DESC")]
+    return [r for r in rows if re.search(r"结果|候选|成交", r.get("title") or "")]
 
-got = 0
-with sync_playwright() as p:
-    b, pg = collector.launch(p)
-    try:
-        pg.goto("https://b2b.10086.cn/b2b/main/preparePurchaseNoticeList.html",
-                wait_until="networkidle", timeout=90000)
-        pg.wait_for_timeout(3000)
-        for r in need:
-            txt, meta, err = collector.fetch_cmcc_detail(pg, {
-                "id": r["id"].replace("cmcc_", ""), "uuid": r["uuid"],
-                "publishType": "SELECTION_RESULTS"})
-            if err or not txt:
-                print("  x %s %s" % (r["title"][:30], (err or "")[:40]))
-                time.sleep(random.uniform(1.0, 2.0))
-                continue
-            w = collector.parse_winner(txt)
-            sets = []
-            args = []
-            if w:
-                sets.append("winner=?")
-                args.append(w)
-                got += 1
-            if not (r["content"] or "").strip():
-                sets.append("content=?")
-                args.append(txt[:8000])
-            bc = collector.parse_build_content(txt, r["title"])
-            if bc and (not (r["build_content"] or "").strip() or len(bc) > 6):
-                sets.append("build_content=?")
-                args.append(bc)
-            snap = db.save_snapshot(r["id"], txt)
-            if snap:
-                sets.append("snapshot_path=?")
-                args.append(snap)
-            newurl = re.sub(r"publishType=[A-Z_]+", "publishType=SELECTION_RESULTS", r["url"])
-            if newurl != r["url"]:
-                sets.append("url=?")
-                args.append(newurl)
-            if sets:
-                args.append(r["id"])
-                conn.execute("update bids set " + ",".join(sets) + " where id=?", args)
-                conn.commit()
-            print("  %s %s | 中选人=%s" % ("v" if w else "-", r["title"][:34], w or "—"))
-            time.sleep(random.uniform(1.2, 2.2))
-    finally:
-        b.close()
 
-print("\n补齐中选人 %d 条" % got)
-tot = conn.execute("select count(*) from bids where winner is not null and winner!=''").fetchone()[0]
-print("全库有中选人 %d / %d" % (tot, conn.execute("select count(*) from bids").fetchone()[0]))
-for r in conn.execute("select title,winner from bids where winner!='' and winner is not null "
-                      "order by publish_date desc limit 8"):
-    print("   ", r["title"][:40], "→", r["winner"])
+def apply_text(row, text):
+    winner = collector.parse_winner(text)
+    if not winner:
+        return False
+    sets, args = ["winner=?"], [winner]
+    if not (row.get("content") or "").strip():
+        sets.append("content=?")
+        args.append(text[:8000])
+    # 不重写任何已有快照（包括已下架公告）。
+    snap = row.get("snapshot_path")
+    default_snap = db.SNAP / (row["id"] + ".html")
+    if not snap and not default_snap.exists():
+        snap = db.save_snapshot(row["id"], text)
+        if snap:
+            sets.append("snapshot_path=?")
+            args.append(snap)
+    elif not snap and default_snap.exists():
+        sets.append("snapshot_path=?")
+        args.append(str(default_snap.relative_to(db.BASE)).replace("\\", "/"))
+    args.append(row["id"])
+    with db.conn() as c:
+        changed = c.execute("UPDATE bids SET " + ",".join(sets) +
+            " WHERE id=? AND (winner IS NULL OR trim(winner)='')", args).rowcount
+    if changed:
+        print(f"补齐 {row['id']}: {winner}", flush=True)
+    return bool(changed)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=60)
+    parser.add_argument("--cache-dir", type=Path)
+    args = parser.parse_args()
+    rows = pending_rows()
+    waiting, updated = [], 0
+    for row in rows:
+        if apply_text(row, row.get("content") or ""):
+            updated += 1
+        else:
+            waiting.append(row)
+    if args.cache_dir:
+        for row in waiting:
+            cached = args.cache_dir / (row["id"] + ".json")
+            if cached.exists():
+                text = json.loads(cached.read_text(encoding="utf-8")).get("text")
+                if text:
+                    updated += apply_text(row, text)
+    else:
+        # 独立于日常详情的数量限额，同时补抓此前遗漏的历史结果公告。
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for prefix in ("cmcc_", "cu_"):
+                selected = [r for r in waiting if r["id"].startswith(prefix) and r.get("uuid")][:args.limit]
+                if not selected:
+                    continue
+                browser = None
+                try:
+                    if prefix == "cu_":
+                        browser, ctx, page = collector.cuisine(p)
+                        page.goto(collector.CU_HOME, wait_until="domcontentloaded", timeout=60000)
+                    else:
+                        browser, page = collector.launch(p)
+                        page.goto("https://b2b.10086.cn/b2b/main/preparePurchaseNoticeList.html", wait_until="domcontentloaded", timeout=60000)
+                    page.wait_for_timeout(3000)
+                    for row in selected:
+                        if prefix == "cu_":
+                            text, meta, err = collector.fetch_cu_detail(page, row["uuid"])
+                        else:
+                            text, meta, err = collector.fetch_cmcc_detail(page, {
+                                "id": row["id"][5:], "uuid": row["uuid"], "publishType": "SELECTION_RESULTS"})
+                        if text:
+                            updated += apply_text(row, text)
+                        if err:
+                            print(f"待重试 {row['id']}: {err}", flush=True)
+                        time.sleep(1)
+                except Exception as exc:
+                    print(f"{prefix} 补抓暂未完成，后续重试：{exc}", flush=True)
+                finally:
+                    if browser:
+                        browser.close()
+    db.checkpoint()
+    print(f"本次补齐 {updated} 条；仍缺厂商 {len(pending_rows())} 条（无公开正文或未明确公示的保持为空）")
+
+
+if __name__ == "__main__":
+    main()
