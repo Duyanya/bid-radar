@@ -3,6 +3,45 @@ from classifier import classify
 
 
 class ScopeTests(unittest.TestCase):
+    def test_broadband_software_and_discovery(self):
+        from network_scope import SEARCH_TERMS, hits
+        titles = [
+            '四川移动家庭宽带质量分析平台开发项目',
+            '浙江移动千兆宽带业务感知系统建设项目',
+            '广东电信万兆宽带智能诊断平台研发项目',
+            '江苏联通家宽装维管理系统升级项目',
+            '山东移动固网业务开通平台开发项目',
+            '河北移动光接入资源管理系统建设项目',
+            '福建电信全光组网质量分析平台研发项目',
+            '湖北移动光纤到户业务测试软件研发项目',
+            '陕西联通fttr质量分析系统开发项目',
+            '安徽移动FTTH运维平台建设项目',
+            '江西电信XGS-PON性能分析平台建设项目',
+            '辽宁联通OLT配置管理平台开发项目',
+            '云南移动ONU远程诊断系统研发项目',
+        ]
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertTrue(hits(title, SEARCH_TERMS), title)
+                self.assertTrue(classify(title)[0], classify(title))
+
+    def test_broadband_does_not_bypass_scope_boundaries(self):
+        titles = [
+            '四川移动家庭宽带工程施工采购项目',
+            '浙江移动FTTR终端采购项目',
+            '安徽电信GPON设备采购项目',
+            '江西移动宽带代维服务采购项目',
+            '广东电信家庭宽带营销系统开发项目',
+            '中国电信南京分公司宽带诊断系统开发项目',
+            '四川移动FRONT平台研发项目',
+        ]
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertFalse(classify(title)[0], classify(title))
+        self.assertTrue(classify(
+            '湖南移动质量分析平台开发项目',
+            '采购内容：建设FTTR业务质量分析平台，支持业务诊断。')[0])
+
     def test_positive_network_software(self):
         titles = [
             '浙江移动网络指挥调度系统研发采购项目',
