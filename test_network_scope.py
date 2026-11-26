@@ -3,6 +3,58 @@ from classifier import classify
 
 
 class ScopeTests(unittest.TestCase):
+    def test_network_domain_and_resource_software(self):
+        from network_scope import SEARCH_TERMS, hits
+
+        titles = [
+            '中国移动网络域平台建设项目',
+            '四川移动宽带资源核配系统软件开发服务采购项目',
+            '河北移动管线管理系统开发服务采购项目',
+            '广东电信通信管道台账管理软件建设项目',
+            '安徽移动杆路和管孔资源调度平台建设项目',
+            '福建电信纤芯资源可视化软件开发项目',
+            '湖北联通线路资源管理平台软件定制开发服务框架采购项目',
+            '山东移动管线施工管理系统软件开发服务采购项目',
+            '浙江移动管道资源租赁管理平台开发服务采购项目',
+        ]
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertTrue(hits(title, SEARCH_TERMS))
+                self.assertTrue(classify(title)[0], classify(title))
+
+    def test_resource_terms_do_not_admit_hardware_construction_or_standalone_services(self):
+        titles = [
+            '河北移动管线工程施工采购项目',
+            '河北移动管线资源管理平台配套综合布线工程采购项目',
+            '浙江移动网络域系统配套硬件框架集中采购项目',
+            '安徽移动宽带管理系统配套设备及备件采购项目',
+            '江西电信OLT设备研发项目',
+            '浙江电信线路资源用光缆供货采购项目',
+            '广东电信家宽业务交付运营系统服务保障项目',
+            '广西移动管线资源管理系统建设技术支撑服务项目',
+            '湖北移动通信网络风险资源防范能力验证服务采购项目',
+            '江苏移动管线资源管理系统运维服务采购项目',
+            '江苏移动管线资源盘点服务采购项目',
+            '山东移动管线资源管理平台开发项目第三方测试服务采购项目',
+            '福建移动人力资源管理系统软件开发采购项目',
+        ]
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertFalse(classify(title)[0], classify(title))
+
+    def test_procurement_details_can_confirm_an_ambiguous_network_project(self):
+        from network_scope import needs_detail
+
+        title = '湖南移动网络域能力提升采购项目'
+        self.assertTrue(needs_detail(title))
+        self.assertTrue(classify(title, '采购内容：开发工单调度软件和可视化模块。')[0])
+        title = '湖南移动管线资源管理服务采购项目'
+        self.assertTrue(needs_detail(title))
+        self.assertTrue(classify(title, '服务内容：开发管线资源台账管理软件和可视化模块。')[0])
+        self.assertFalse(classify(title, '服务内容：提供管线资源管理系统日常运维服务。')[0])
+        self.assertFalse(classify(title, '资格要求：具备管线资源管理软件开发经验。')[0])
+        self.assertFalse(needs_detail('湖南移动管线资源管理系统维保服务采购项目'))
+
     def test_broadband_software_and_discovery(self):
         from network_scope import SEARCH_TERMS, hits
         titles = [
@@ -54,6 +106,8 @@ class ScopeTests(unittest.TestCase):
             '河北移动数字化网络运营沙盘研发项目',
             '中国移动北京公司网管系统开发及维保框架采购项目',
             '中国移动江西公司OSS域资源及动环支撑研发项目',
+            '江西移动OSS域传输运维管理研发服务采购项目',
+            '江西移动智慧装维统一能力委托研发服务采购项目',
             '中国电信新疆长途传输局光网智能运维管理平台研发项目',
             '中国联通智能网络中台网络资源中心资源数据治理软件研发项目',
             '浙江移动IP网络设备配置核查助手软件研发项目',
